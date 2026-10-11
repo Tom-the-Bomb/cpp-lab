@@ -6,13 +6,59 @@
 #include <vector>
 
 class Trie {
+public:
+    void insert(const std::string& key) {
+        Node* curr = &root_;
+        for (char c : key) {
+            auto& child = curr->children[c];   // creates an empty slot if `c` is missing
+            if (!child) {
+                child = std::make_unique<Node>();
+            }
+            curr = child.get();
+        }
+        curr->isEnd = true;
+    }
+
+    bool contains(const std::string& key) const {
+        const Node* node = findNode(key);
+        return node && node->isEnd;
+    }
+
+    void erase(const std::string& key) {
+        eraseRec(&root_, key, 0);
+    }
+
+    // every key starting with `prefix`, in alphabetical order
+    std::vector<std::string> collect(const std::string& prefix) const {
+        std::vector<std::string> out;
+        if (const Node* node = findNode(prefix)) {
+            collectRec(node, prefix, out);
+        }
+        return out;
+    }
+
+private:
     struct Node {
-        using Children = std::map<char, std::unique_ptr<Node>>;
-        Children children;
+        std::map<char, std::unique_ptr<Node>> children;
         bool isEnd = false;
     };
+
     Node root_;
 
+    // the node reached by following `path` from the root, or nullptr if the path breaks
+    const Node* findNode(const std::string& path) const {
+        const Node* curr = &root_;
+        for (char c : path) {
+            auto it = curr->children.find(c);
+            if (it == curr->children.end()) {
+                return nullptr;
+            }
+            curr = it->second.get();
+        }
+        return curr;
+    }
+
+    // returns true if the caller should remove `node`
     bool eraseRec(Node* node, const std::string& key, std::size_t i) {
         if (i == key.size()) {
             if (!node->isEnd) {
@@ -20,7 +66,7 @@ class Trie {
             }
             node->isEnd = false;
         } else {
-            Node::Children::iterator it = node->children.find(key[i]);
+            auto it = node->children.find(key[i]);
             if (it == node->children.end()) {
                 return false;
             }
@@ -31,57 +77,13 @@ class Trie {
         return !node->isEnd && node->children.empty();
     }
 
-    void collectRec(
-        const Node* node, std::string curr,
-        std::vector<std::string>& out
-    ) const {
+    // pre-order DFS, so `out` is in alphabetical order
+    void collectRec(const Node* node, std::string path, std::vector<std::string>& out) const {
         if (node->isEnd) {
-            out.push_back(curr);
+            out.push_back(path);
         }
-        for (auto& child : node->children) {
-            collectRec(child.second.get(), curr + child.first, out);
+        for (const auto& [ch, child] : node->children) {
+            collectRec(child.get(), path + ch, out);
         }
-    }
-public:
-    void erase(const std::string& key) {
-        eraseRec(&root_, key, 0);
-    }
-
-    bool contains(const std::string& key) const {
-        const Node* curr = &root_;
-        for (char c : key) {
-            Node::Children::const_iterator it = curr->children.find(c);
-            if (it == curr->children.end()) {
-                return false;
-            }
-            curr = it->second.get();
-        }
-        return curr->isEnd;
-    }
-
-    void insert(const std::string& key) {
-        Node* curr = &root_;
-        for (char c : key) {
-            std::unique_ptr<Node>& child = curr->children[c];
-            if (!child) {
-                child = std::make_unique<Node>();
-            }
-            curr = child.get();
-        }
-        curr->isEnd = true;
-    }
-
-    std::vector<std::string> collect(const std::string& prefix) const {
-        std::vector<std::string> out;
-        const Node* curr = &root_;
-        for (char c : prefix) {
-            Node::Children::const_iterator it = curr->children.find(c);
-            if (it == curr->children.end()) {
-                return out;
-            }
-            curr = it->second.get();
-        }
-        collectRec(curr, prefix, out);
-        return out;
     }
 };
