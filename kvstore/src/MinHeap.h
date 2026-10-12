@@ -82,3 +82,8 @@ private:
         }
     }
 };
+
+#ifdef INTELLISENSE_CHECK_TEMPLATES
+template class MinHeap<int>;
+template class MinHeap<int, std::greater<int>>;
+#endif
