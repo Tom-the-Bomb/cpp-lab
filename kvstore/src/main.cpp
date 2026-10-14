@@ -3,11 +3,17 @@
 #include "Store.h"
 #include "Command.h"
 #include "Reply.h"
+#include "Server.h"
 
-int main() {
+int main(int argc, char* argv[]) {
     std::string line;
     Store store;
     CommandTable t = makeCommands();
+
+    if (argc == 2 && std::string(argv[1]) == "--server") {
+        // port is 1 above Redis
+        return !runServer(store, t, 6380);
+    }
 
     while (true) {
         std::cout << "> " << std::flush;
