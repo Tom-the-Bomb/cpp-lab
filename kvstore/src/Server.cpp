@@ -48,6 +48,7 @@ static bool sendAll(int fd, const std::string& data) {
     std::size_t len = data.size();
     std::size_t start = 0;
     while (len > 0) {
+        // send may only send some parts at the start
         ssize_t sent = send(fd, data.data() + start, len, 0);
         // -1 = error, 0 = no bytes send (inf loop)
         if (sent <= 0) {
@@ -66,6 +67,7 @@ static void handleClient(int fd, Store& store, const CommandTable& table) {
 
     while (true) {
         ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
+        // -1 = error, 0 = connection closed
         if (n <= 0) {
             return;
         }
@@ -90,6 +92,8 @@ static void handleClient(int fd, Store& store, const CommandTable& table) {
 
 bool runServer(Store& store, const CommandTable& commands, int port) {
     // signal ignore SIGPIPE
+    // normally `send` would crash program if writing to broken conn
+    // makes send return -1 instead
     std::signal(SIGPIPE, SIG_IGN);
 
     // create socket returns file descriptor
@@ -108,12 +112,14 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
     sockaddr_in addr {};
     // IPv4
     addr.sin_family = AF_INET;
-    // host to network, short: convert port to network byte order
+    // host to network (big endian -> little endian, byte reversal), short (16 bits): convert port to network byte order
     addr.sin_port = htons(port);
-    // host to network, long: 127.0.0.1
+    // host to network, long (32 bits): 127.0.0.1
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     // attach server to `addr`
+    // treat IPv4 like generic kind with cast, and use sizeof to know the type instead
+    // i.e. IPv4 is 16. bytes IPv6 is 28
     if (bind(server.fd(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
         perror("bind");
         return false;
