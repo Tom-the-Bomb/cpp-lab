@@ -34,6 +34,7 @@ CommandTable makeCommands() {
     CommandTable t;
     t["GET"] = std::make_unique<GetCommand>();
     t["SET"] = std::make_unique<SetCommand>();
+    t["SETNX"] = std::make_unique<SetNXCommand>();
     t["DEL"] = std::make_unique<DelCommand>();
     t["EXISTS"] = std::make_unique<ExistsCommand>();
     t["COUNT"] = std::make_unique<CountCommand>();
@@ -57,6 +58,13 @@ Reply SetCommand::execute(Store& store, const Args& args) {
     }
     store.set(args[1], args[2]);
     return Reply::ok();
+}
+
+Reply SetNXCommand::execute(Store& store, const Args& args) {
+    if (args.size() != 3) {
+        return Reply::error("ERR usage: SETNX <key> <value>");
+    }
+    return Reply::integer(store.setIfAbsent(args[1], args[2]));
 }
 
 Reply DelCommand::execute(Store& store, const Args& args) {

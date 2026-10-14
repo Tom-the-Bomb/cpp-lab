@@ -5,7 +5,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_options(-Wall -Wextra -Wpedantic -g -fsanitize=address,undefined)
-add_link_options(-fsanitize=address,undefined)
+set(SANITIZERS "address,undefined" CACHE STRING "value passed to -fsanitize=")
+
+add_compile_options(-Wall -Wextra -Wpedantic -g -fsanitize=${SANITIZERS})
+add_link_options(-fsanitize=${SANITIZERS})
 
 add_subdirectory(kvstore)

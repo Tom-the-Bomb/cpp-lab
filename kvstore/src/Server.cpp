@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <cstdio>
 #include <string>
+#include <thread>
 #include "Server.h"
 #include "Reply.h"
 
@@ -138,7 +139,9 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
             continue;
         }
         Socket client(fd);
-        handleClient(client.fd(), store, commands);
+        std::thread([sock = std::move(client), &store, &commands] {
+            handleClient(sock.fd(), store, commands);
+        }).detach();
     }
     return true;
 }

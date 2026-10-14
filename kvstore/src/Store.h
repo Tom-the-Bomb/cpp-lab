@@ -2,11 +2,13 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <mutex>
 #include "HashMap.h"
 
 class Store {
 public:
-    void set(const std::string& key, const std::string& value);
+    void set(const std::string& key, std::string value);
+    bool setIfAbsent(const std::string& key, const std::string& value);
     std::optional<std::string> get(const std::string& key) const;
     bool del(const std::string& key);
     bool exists(const std::string& key) const;
@@ -17,6 +19,7 @@ private:
     };
 
     HashMap<std::string, Entry, FnvHash> data_;
+    mutable std::mutex mu_;
 
     bool removeEntry(const std::string& key);
 };

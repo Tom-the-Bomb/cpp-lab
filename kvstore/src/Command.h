@@ -38,6 +38,11 @@ public:
     Reply execute(Store& store, const Args& args) override;
 };
 
+class SetNXCommand : public Command {
+public:
+    Reply execute(Store& store, const Args& args) override;
+};
+
 using CommandTable = std::unordered_map<std::string, std::unique_ptr<Command>>;
 
 CommandTable makeCommands();
