@@ -1,5 +1,14 @@
 # KV Store
 
+A Redis-style in-memory key-value store
+
+- LRU eviction using self-implemented doubly-linked list
+- TTL using a background thread and a self-implemented min-heap
+- internal storage using a self-implemented hashmap (FNV-1a hashing)
+- prefix matching using a self-implemented trie
+- concurrency support using a mutex with 1 thread/client
+- raw TCP server on localhost
+
 ## Run
 
 Build first (see [root README](../README.md)).
