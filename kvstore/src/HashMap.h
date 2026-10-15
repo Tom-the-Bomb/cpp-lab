@@ -152,7 +152,7 @@ public:
         std::size_t i = indexFor(key, capacity_);
 
         V* n = find(key);
-        if (n == nullptr) {
+        if (!n) {
             Node* newNode = new Node{key, std::move(value), buckets_[i]};
             buckets_[i] = newNode;
             size_++;

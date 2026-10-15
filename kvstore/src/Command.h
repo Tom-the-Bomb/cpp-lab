@@ -23,6 +23,11 @@ public:
     Reply execute(Store& store, const Args& args) override;
 };
 
+class SetNXCommand : public Command {
+public:
+    Reply execute(Store& store, const Args& args) override;
+};
+
 class DelCommand : public Command {
 public:
     Reply execute(Store& store, const Args& args) override;
@@ -38,7 +43,17 @@ public:
     Reply execute(Store& store, const Args& args) override;
 };
 
-class SetNXCommand : public Command {
+class ExpireCommand : public Command {
+public:
+    Reply execute(Store& store, const Args& args) override;
+};
+
+class TTLCommand : public Command {
+public:
+    Reply execute(Store& store, const Args& args) override;
+};
+
+class PersistCommand : public Command {
 public:
     Reply execute(Store& store, const Args& args) override;
 };

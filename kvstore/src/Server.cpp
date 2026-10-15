@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <string>
 #include <thread>
+#include <chrono>
+#include <cerrno>
 #include "Server.h"
 #include "Reply.h"
 
@@ -22,7 +24,7 @@ public:
         return fd_;
     }
 
-    // only 1 socket can own while file descriptor
+    // only 1 socket can own file descriptor
     Socket(const Socket& other) = delete;
     Socket& operator=(const Socket& other) = delete;
 
@@ -63,8 +65,7 @@ static bool sendAll(int fd, const std::string& data) {
 
 static void handleClient(int fd, Store& store, const CommandTable& table) {
     std::string buf;
-    // 16kB
-    char chunk[4096];
+    char chunk[4096]; // 4 kB
 
     while (true) {
         ssize_t n = recv(fd, chunk, sizeof(chunk), 0);
@@ -87,6 +88,10 @@ static void handleClient(int fd, Store& store, const CommandTable& table) {
                     return;
                 }
             }
+        }
+        if (buf.size() >= 65536) { // 64 kB max size, ie. long line without \n
+            sendAll(fd, toText(Reply::error("ERR Protocol error: too big inline request")) + "\n");
+            return;
         }
     }
 }
@@ -113,14 +118,14 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
     sockaddr_in addr {};
     // IPv4
     addr.sin_family = AF_INET;
-    // host to network (big endian -> little endian, byte reversal), short (16 bits): convert port to network byte order
+    // host to network (little endian -> big endian, byte reversal), short (16 bits): convert port to network byte order
     addr.sin_port = htons(port);
     // host to network, long (32 bits): 127.0.0.1
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     // attach server to `addr`
     // treat IPv4 like generic kind with cast, and use sizeof to know the type instead
-    // i.e. IPv4 is 16. bytes IPv6 is 28
+    // i.e. IPv4 is 16 bytes IPv6 is 28
     if (bind(server.fd(), reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
         perror("bind");
         return false;
@@ -135,7 +140,12 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
     while (true) {
         int fd = accept(server.fd(), nullptr, nullptr);
         if (fd == -1) {
+            int err = errno;
             perror("accept");
+            // too many open files (ran out of fd) in system (OS), or in this process
+            if (err == ENFILE || err == EMFILE) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
             continue;
         }
         Socket client(fd);

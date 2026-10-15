@@ -25,4 +25,5 @@ std::string toText(const Reply& r) {
             return out;
         }
     }
+    return "";
 }

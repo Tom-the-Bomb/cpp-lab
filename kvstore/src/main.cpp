@@ -6,7 +6,6 @@
 #include "Server.h"
 
 int main(int argc, char* argv[]) {
-    std::string line;
     Store store;
     CommandTable t = makeCommands();
 
@@ -14,6 +13,7 @@ int main(int argc, char* argv[]) {
         // port is 1 above Redis
         return !runServer(store, t, 6380);
     }
+    std::string line;
 
     while (true) {
         std::cout << "> " << std::flush;

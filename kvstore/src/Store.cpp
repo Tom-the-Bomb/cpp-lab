@@ -1,4 +1,66 @@
 #include "Store.h"
+#include <utility>
+
+constexpr int maxWorkPerSweep = 1000;
+
+Store::Store(): sweeper_([this] {
+    while (running_) {
+        if (sweepExpired()) {
+            // tell scheduler to allow core to run other threads
+            std::this_thread::yield();
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+}) {}
+
+Store::~Store() {
+    running_ = false;
+    sweeper_.join();
+}
+
+// returns `true` if sweep finished only due to `maxWorkPerSweep`
+bool Store::sweepExpired() {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto now = Clock::now();
+    int popped = 0;
+
+    while (!heap_.empty() && heap_.top().when <= now) {
+        // break up long backlogs using `maxWorkPerSweep`
+        // so it doesn't hold `mu_` for too long
+        if (popped == maxWorkPerSweep) {
+            return true;
+        }
+
+        Expiry e = heap_.top();
+        heap_.pop();
+        popped++;
+
+        Entry* entry = data_.find(e.key);
+        // check if stale due to EXPIRE or PERSIST
+        // or SET/SETNX clearing TTLs
+        if (entry && entry->expiresAt == e.when) {
+            removeEntry(e.key);
+        }
+    }
+    return false;
+}
+
+bool Store::isExpired(const Entry& v, TimePoint now) {
+    return v.expiresAt && *v.expiresAt <= now;
+}
+
+const Store::Entry* Store::findLive(const std::string& key, TimePoint now) const {
+    const Entry* v = data_.find(key);
+    if (!v || isExpired(*v, now)) {
+        return nullptr;
+    }
+    return v;
+}
+
+Store::Entry* Store::findLive(const std::string& key, TimePoint now) {
+    return const_cast<Entry*>(std::as_const(*this).findLive(key, now));
+}
 
 void Store::set(const std::string& key, std::string value) {
     std::lock_guard<std::mutex> lock(mu_);
@@ -7,7 +69,7 @@ void Store::set(const std::string& key, std::string value) {
 
 bool Store::setIfAbsent(const std::string& key, const std::string& value) {
     std::lock_guard<std::mutex> lock(mu_);
-    if (data_.contains(key)) {
+    if (findLive(key, Clock::now())) {
         return false;
     }
     data_.set(key, Entry {value});
@@ -16,11 +78,11 @@ bool Store::setIfAbsent(const std::string& key, const std::string& value) {
 
 std::optional<std::string> Store::get(const std::string& key) const {
     std::lock_guard<std::mutex> lock(mu_);
-    const Entry* e = data_.find(key);
-    if (!e) {
+    const Entry* v = findLive(key, Clock::now());
+    if (!v) {
         return std::nullopt;
     }
-    return e->value;
+    return v->value;
 }
 
 bool Store::del(const std::string& key) {
@@ -30,7 +92,7 @@ bool Store::del(const std::string& key) {
 
 bool Store::exists(const std::string& key) const {
     std::lock_guard<std::mutex> lock(mu_);
-    return data_.contains(key);
+    return findLive(key, Clock::now()) != nullptr;
 }
 
 std::size_t Store::size() const {
@@ -38,7 +100,45 @@ std::size_t Store::size() const {
     return data_.size();
 }
 
+bool Store::expire(const std::string& key, std::chrono::seconds s) {
+    std::lock_guard<std::mutex> lock(mu_);
+    TimePoint now = Clock::now();
+    Entry* v = findLive(key, now);
+    if (!v) {
+        return false;
+    }
+    TimePoint exp = now + s;
+    v->expiresAt = exp;
+    heap_.push(Expiry {key, exp});
+    return true;
+}
+
+long long Store::ttl(const std::string& key) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    TimePoint now = Clock::now();
+    const Entry* v = findLive(key, now);
+    if (!v) {
+        return -2;
+    }
+    if (!v->expiresAt) {
+        return -1;
+    }
+    return std::chrono::round<std::chrono::seconds>(*v->expiresAt - now).count();
+}
+
+bool Store::persist(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mu_);
+    Entry* v = findLive(key, Clock::now());
+    if (!v || !v->expiresAt) {
+        return false;
+    }
+    v->expiresAt = std::nullopt;
+    return true;
+}
+
+// returns whether a live key was removed
 bool Store::removeEntry(const std::string& key) {
-    // caller holds lock
-    return data_.erase(key);
+    bool exists = findLive(key, Clock::now()) != nullptr;
+    data_.erase(key);
+    return exists;
 }

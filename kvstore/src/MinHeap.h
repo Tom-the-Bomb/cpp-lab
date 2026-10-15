@@ -24,8 +24,8 @@ public:
         }
     }
 
-    void push(const T& x) {
-        data_.push_back(x);
+    void push(T x) {
+        data_.push_back(std::move(x));
         siftUp(data_.size() - 1);
     }
 

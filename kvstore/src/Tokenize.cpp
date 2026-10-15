@@ -4,11 +4,11 @@
 #include <optional>
 #include <cstddef>
 
-static inline bool isQuote(char c) {
+static bool isQuote(char c) {
     return c == '"' || c == '\'';
 }
 
-static inline std::optional<int> toHex(char c) {
+static std::optional<int> toHex(char c) {
     int d;
     if ('a' <= c && c <= 'f') {
         d = c - 'a' + 10;
@@ -22,7 +22,7 @@ static inline std::optional<int> toHex(char c) {
     return d;
 }
 
-static inline std::optional<char> toEscape(char c) {
+static std::optional<char> toEscape(char c) {
     switch (c) {
         case 'n':
             return '\n';
@@ -113,7 +113,7 @@ Args tokenize(const std::string& line) {
 
         if (isSpace && !tokenEmpty) {
             tokens.push_back(token);
-            token = "";
+            token.clear();
             tokenEmpty = true;
         } else if (!isSpace) {
             token.push_back(line[i]);
