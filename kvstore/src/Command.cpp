@@ -1,5 +1,6 @@
 #include "Command.h"
 #include "Tokenize.h"
+#include <memory>
 #include <stdexcept>
 #include <utility>
 #include <algorithm>
@@ -43,6 +44,7 @@ CommandTable makeCommands() {
     t["EXPIRE"] = std::make_unique<ExpireCommand>();
     t["TTL"] = std::make_unique<TTLCommand>();
     t["PERSIST"] = std::make_unique<PersistCommand>();
+    t["KEYS"] = std::make_unique<KeysCommand>();
     return t;
 }
 
@@ -130,4 +132,23 @@ Reply PersistCommand::execute(Store& store, const Args& args) {
         return Reply::error("ERR usage: PERSIST <key>");
     }
     return Reply::integer(store.persist(args[1]));
+}
+
+Reply KeysCommand::execute(Store& store, const Args& args) {
+    if (args.size() != 2) {
+        return Reply::error("ERR usage: KEYS <prefix>");
+    }
+    std::string pre = args[1];
+    std::vector<Reply> out;
+
+    if (pre.ends_with("*")) {
+        pre.pop_back();
+        std::vector<std::string> match = store.keysWithPrefix(pre);
+        for (std::string& k : match) {
+            out.push_back(Reply::bulk(std::move(k)));
+        }
+    } else if (store.exists(pre)) {
+        out.push_back(Reply::bulk(std::move(pre)));
+    }
+    return Reply::array(std::move(out));
 }

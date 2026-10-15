@@ -66,6 +66,7 @@ Store::Entry* Store::findLive(const std::string& key, TimePoint now) {
 // since it creates a new LRU node
 // otherwise existing Entry(s) would be replaced while its node is still linked (dangling)
 void Store::insertNew(const std::string& key, std::string value) {
+    trie_.insert(key);
     if (maxKeys_ > 0 && data_.size() >= maxKeys_) {
         // copy since removeEntry frees the node that owns this string
         std::string victim = lru_.back()->key;
@@ -78,6 +79,7 @@ void Store::insertNew(const std::string& key, std::string value) {
 
 // returns whether a live key was removed
 bool Store::removeEntry(const std::string& key) {
+    trie_.erase(key);
     bool exists = findLive(key, Clock::now()) != nullptr;
     Entry* v = data_.find(key);
     if (v) {
@@ -167,4 +169,14 @@ bool Store::persist(const std::string& key) {
     }
     v->expiresAt = std::nullopt;
     return true;
+}
+
+std::vector<std::string> Store::keysWithPrefix(const std::string& prefix) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<std::string> keys = trie_.collect(prefix);
+    TimePoint now = Clock::now();
+    std::erase_if(keys, [this, now](const std::string& key) {
+        return findLive(key, now) == nullptr;
+    });
+    return keys;
 }

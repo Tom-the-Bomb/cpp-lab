@@ -7,9 +7,11 @@
 #include <thread>
 #include <atomic>
 #include <memory>
+#include <vector>
 #include "HashMap.h"
 #include "MinHeap.h"
 #include "LruList.h"
+#include "Trie.h"
 
 class Store {
 public:
@@ -32,6 +34,7 @@ public:
     bool expire(const std::string& key, std::chrono::seconds s);
     long long ttl(const std::string& key) const;
     bool persist(const std::string& key);
+    std::vector<std::string> keysWithPrefix(const std::string& prefix) const;
     std::size_t size() const;
 private:
     struct Entry {
@@ -55,6 +58,7 @@ private:
     HashMap<std::string, Entry, FnvHash> data_;
     MinHeap<Expiry, ExpiryLess> heap_;
     LruList lru_;
+    Trie trie_;
     std::size_t maxKeys_;
     std::atomic<bool> running_ = true;
     std::thread sweeper_;
