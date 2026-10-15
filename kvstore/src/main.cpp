@@ -1,9 +1,12 @@
-#include <string>
+#include <cstddef>
 #include <iostream>
-#include "Store.h"
+#include <string>
+
 #include "Command.h"
 #include "Reply.h"
 #include "Server.h"
+#include "Store.h"
+#include "Tokenize.h"
 
 int main(int argc, char* argv[]) {
     bool server = false;

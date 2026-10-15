@@ -1,9 +1,9 @@
 #pragma once
 #include <cstddef>
 #include <functional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
-#include <stdexcept>
 
 template <typename T, typename Less = std::less<T>>
 class MinHeap {

@@ -1,5 +1,7 @@
 #include "Reply.h"
+
 #include <cstddef>
+#include <string>
 
 std::string toText(const Reply& r) {
     switch (r.type) {

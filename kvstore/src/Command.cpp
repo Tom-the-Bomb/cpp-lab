@@ -1,12 +1,19 @@
 #include "Command.h"
-#include "Tokenize.h"
-#include <memory>
-#include <stdexcept>
-#include <utility>
+
 #include <algorithm>
 #include <cctype>
-#include <cstddef>
 #include <chrono>
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "Reply.h"
+#include "Store.h"
+#include "Tokenize.h"
 
 static std::string toUpper(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {

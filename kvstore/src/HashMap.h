@@ -4,8 +4,8 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <utility>
 #include <type_traits>
+#include <utility>
 
 struct FnvHash {
     std::size_t operator()(const std::string& s) const {

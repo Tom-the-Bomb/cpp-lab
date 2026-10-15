@@ -1,16 +1,17 @@
 #pragma once
+#include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
-#include <mutex>
 #include <thread>
-#include <atomic>
-#include <memory>
 #include <vector>
+
 #include "HashMap.h"
-#include "MinHeap.h"
 #include "LruList.h"
+#include "MinHeap.h"
 #include "Trie.h"
 
 class Store {

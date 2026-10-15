@@ -1,8 +1,9 @@
 #pragma once
-#include <string>
-#include <optional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <unordered_map>
+
 #include "Reply.h"
 #include "Store.h"
 #include "Tokenize.h"

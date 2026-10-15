@@ -1,15 +1,23 @@
+#include "Server.h"
+
 #include <arpa/inet.h>
-#include <csignal>
 #include <netinet/in.h>
+#include <signal.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <string>
 #include <thread>
-#include <chrono>
-#include <cerrno>
-#include "Server.h"
+#include <utility>
+
+#include "Command.h"
 #include "Reply.h"
+#include "Store.h"
 
 class Socket {
 public:

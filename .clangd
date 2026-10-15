@@ -1,3 +1,10 @@
 CompileFlags:
   CompilationDatabase: build
   Add: [-DINTELLISENSE_CHECK_TEMPLATES]
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+  Includes:
+    # macOS-internal headers clangd suggests instead of the portable POSIX ones
+    # (htons -> <arpa/inet.h>, ssize_t -> <sys/types.h>, SIGPIPE -> <signal.h>)
+    IgnoreHeader: ['sys/_.*\.h', 'sys/signal\.h']
