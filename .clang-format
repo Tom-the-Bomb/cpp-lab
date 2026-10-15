@@ -1,0 +1,34 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+AccessModifierOffset: -4
+ColumnLimit: 0
+PointerAlignment: Left
+IndentCaseLabels: true
+EmptyLineBeforeAccessModifier: Leave
+SpaceBeforeCpp11BracedList: true
+InsertNewlineAtEOF: true
+
+# constructors: `Foo(int x): x_(x) {}`
+SpaceBeforeCtorInitializerColon: false
+BreakConstructorInitializers: AfterColon
+LambdaBodyIndentation: OuterScope
+
+# always `if (x) {` + body on its own line, braces added if missing
+InsertBraces: true
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: Empty
+AllowShortEnumsOnASingleLine: true
+
+# includes: own header, C/POSIX, C++ standard, project; sorted, blank line between groups
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<.*\.h>'
+    Priority: 1
+  - Regex: '^<.*>'
+    Priority: 2
+  - Regex: '^".*"'
+    Priority: 3

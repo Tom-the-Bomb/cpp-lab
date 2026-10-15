@@ -114,11 +114,10 @@ public:
     // copy constructor
     HashMap(const HashMap& other):
         buckets_(new Node*[other.capacity_]()), capacity_(other.capacity_),
-        size_(other.size_), hash_(other.hash_)
-    {
+        size_(other.size_), hash_(other.hash_) {
         for (std::size_t i = 0; i < capacity_; i++) {
             for (Node* curr = other.buckets_[i]; curr != nullptr; curr = curr->next) {
-                Node* n = new Node{curr->key, curr->value, buckets_[i]};
+                Node* n = new Node {curr->key, curr->value, buckets_[i]};
                 buckets_[i] = n;
             }
         }
@@ -127,8 +126,7 @@ public:
     // move constructor
     HashMap(HashMap&& other) noexcept:
         buckets_(other.buckets_), capacity_(other.capacity_),
-        size_(other.size_), hash_(other.hash_)
-    {
+        size_(other.size_), hash_(other.hash_) {
         other.buckets_ = nullptr;
         other.capacity_ = 0;
         other.size_ = 0;
@@ -153,7 +151,7 @@ public:
 
         V* n = find(key);
         if (!n) {
-            Node* newNode = new Node{key, std::move(value), buckets_[i]};
+            Node* newNode = new Node {key, std::move(value), buckets_[i]};
             buckets_[i] = newNode;
             size_++;
 

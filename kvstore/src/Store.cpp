@@ -15,15 +15,15 @@
 constexpr int maxWorkPerSweep = 1000;
 
 Store::Store(std::size_t maxKeys): maxKeys_(maxKeys), sweeper_([this] {
-    while (running_) {
-        if (sweepExpired()) {
-            // tell scheduler to allow core to run other threads
-            std::this_thread::yield();
-        } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        while (running_) {
+            if (sweepExpired()) {
+                // tell scheduler to allow core to run other threads
+                std::this_thread::yield();
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
         }
-    }
-}) {}
+    }) {}
 
 Store::~Store() {
     running_ = false;

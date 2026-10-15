@@ -6,7 +6,12 @@
 struct Reply {
     // follows RESP (REdis Serialization Protocol)
     enum class Type {
-        Simple, Error, Integer, Bulk, Nil, Array
+        Simple,
+        Error,
+        Integer,
+        Bulk,
+        Nil,
+        Array
     };
 
     Type type = Type::Nil;
@@ -17,8 +22,8 @@ struct Reply {
 
     static Reply simple(std::string str) {
         return Reply {
-            .type=Type::Simple,
-            .str=std::move(str)
+            .type = Type::Simple,
+            .str = std::move(str),
         };
     }
 
@@ -28,35 +33,35 @@ struct Reply {
 
     static Reply error(std::string error) {
         return Reply {
-            .type=Type::Error,
-            .str=std::move(error)
+            .type = Type::Error,
+            .str = std::move(error),
         };
     }
 
     static Reply integer(long long num) {
         return Reply {
-            .type=Type::Integer,
-            .num=num
+            .type = Type::Integer,
+            .num = num,
         };
     }
 
     static Reply bulk(std::string str) {
         return Reply {
-            .type=Type::Bulk,
-            .str=std::move(str)
+            .type = Type::Bulk,
+            .str = std::move(str),
         };
     }
 
     static Reply nil() {
         return Reply {
-            .type=Type::Nil
+            .type = Type::Nil,
         };
     }
 
     static Reply array(std::vector<Reply> items) {
         return Reply {
-            .type=Type::Array,
-            .items=std::move(items)
+            .type = Type::Array,
+            .items = std::move(items),
         };
     }
 };

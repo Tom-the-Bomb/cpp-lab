@@ -54,7 +54,7 @@ std::optional<long long> parseInt(const std::string& s) {
     // otherwise something like `10abc` was parsed
     // `ec` is error code, `errc` is success
     auto [ptr, ec] = std::from_chars(s.data(), end, n);
-    if (ec != std::errc{} || ptr != end) {
+    if (ec != std::errc {} || ptr != end) {
         return std::nullopt;
     }
     return n;
@@ -88,7 +88,7 @@ Args tokenize(const std::string& line) {
                         token.push_back(line[i]);
                         // j++ to skip \, the later global j++ will skip '/"
                         j++;
-                    // escape sequences only work in "" (Redis)
+                        // escape sequences only work in "" (Redis)
                     } else if (line[i] == '"') {
                         if (j + 3 < n && line[j + 1] == 'x') {
                             auto d1 = toHex(line[j + 2]);

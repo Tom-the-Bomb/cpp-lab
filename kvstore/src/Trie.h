@@ -10,7 +10,7 @@ public:
     void insert(const std::string& key) {
         Node* curr = &root_;
         for (char c : key) {
-            auto& child = curr->children[c];   // creates an empty slot if `c` is missing
+            auto& child = curr->children[c]; // creates an empty slot if `c` is missing
             if (!child) {
                 child = std::make_unique<Node>();
             }

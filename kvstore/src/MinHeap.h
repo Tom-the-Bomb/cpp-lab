@@ -65,7 +65,7 @@ private:
         std::size_t n = data_.size();
 
         while (true) {
-            std::size_t smallest = i, l = 2*i + 1, r = l + 1;
+            std::size_t smallest = i, l = 2 * i + 1, r = l + 1;
 
             if (l < n && less_(data_[l], data_[smallest])) {
                 smallest = l;
