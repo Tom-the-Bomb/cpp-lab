@@ -3,7 +3,7 @@
 
 constexpr int maxWorkPerSweep = 1000;
 
-Store::Store(): sweeper_([this] {
+Store::Store(std::size_t maxKeys): maxKeys_(maxKeys), sweeper_([this] {
     while (running_) {
         if (sweepExpired()) {
             // tell scheduler to allow core to run other threads
@@ -62,26 +62,59 @@ Store::Entry* Store::findLive(const std::string& key, TimePoint now) {
     return const_cast<Entry*>(std::as_const(*this).findLive(key, now));
 }
 
-void Store::set(const std::string& key, std::string value) {
-    std::lock_guard<std::mutex> lock(mu_);
-    data_.set(key, Entry {std::move(value)});
+// precondition: `key` must not already exist in data_
+// since it creates a new LRU node
+// otherwise existing Entry(s) would be replaced while its node is still linked (dangling)
+void Store::insertNew(const std::string& key, std::string value) {
+    if (maxKeys_ > 0 && data_.size() >= maxKeys_) {
+        // copy since removeEntry frees the node that owns this string
+        std::string victim = lru_.back()->key;
+        removeEntry(victim);
+    }
+    auto node = std::make_unique<LruList::Node>(key);
+    lru_.pushFront(node.get());
+    data_.set(key, Entry {std::move(value), std::move(node)});
 }
 
-bool Store::setIfAbsent(const std::string& key, const std::string& value) {
+// returns whether a live key was removed
+bool Store::removeEntry(const std::string& key) {
+    bool exists = findLive(key, Clock::now()) != nullptr;
+    Entry* v = data_.find(key);
+    if (v) {
+        lru_.unlink(v->node.get());
+    }
+    data_.erase(key);
+    return exists;
+}
+
+void Store::set(const std::string& key, std::string value) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (Entry* v = data_.find(key)) {
+        v->value = std::move(value);
+        v->expiresAt = std::nullopt;
+        lru_.moveToFront(v->node.get());
+        return;
+    }
+    insertNew(key, std::move(value));
+}
+
+bool Store::setIfAbsent(const std::string& key, std::string value) {
     std::lock_guard<std::mutex> lock(mu_);
     if (findLive(key, Clock::now())) {
         return false;
     }
-    data_.set(key, Entry {value});
+    removeEntry(key);
+    insertNew(key, std::move(value));
     return true;
 }
 
-std::optional<std::string> Store::get(const std::string& key) const {
+std::optional<std::string> Store::get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mu_);
     const Entry* v = findLive(key, Clock::now());
     if (!v) {
         return std::nullopt;
     }
+    lru_.moveToFront(v->node.get());
     return v->value;
 }
 
@@ -134,11 +167,4 @@ bool Store::persist(const std::string& key) {
     }
     v->expiresAt = std::nullopt;
     return true;
-}
-
-// returns whether a live key was removed
-bool Store::removeEntry(const std::string& key) {
-    bool exists = findLive(key, Clock::now()) != nullptr;
-    data_.erase(key);
-    return exists;
 }

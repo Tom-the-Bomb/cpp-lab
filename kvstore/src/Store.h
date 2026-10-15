@@ -6,15 +6,17 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
+#include <memory>
 #include "HashMap.h"
 #include "MinHeap.h"
+#include "LruList.h"
 
 class Store {
 public:
     using Clock = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
 
-    Store();
+    explicit Store(std::size_t maxKeys = 0);
     ~Store();
 
     // store is non-copyable due to mutex and thread
@@ -23,8 +25,8 @@ public:
 
     // lock `mu_` themselves
     void set(const std::string& key, std::string value);
-    bool setIfAbsent(const std::string& key, const std::string& value);
-    std::optional<std::string> get(const std::string& key) const;
+    bool setIfAbsent(const std::string& key, std::string value);
+    std::optional<std::string> get(const std::string& key);
     bool del(const std::string& key);
     bool exists(const std::string& key) const;
     bool expire(const std::string& key, std::chrono::seconds s);
@@ -34,6 +36,7 @@ public:
 private:
     struct Entry {
         std::string value;
+        std::unique_ptr<LruList::Node> node;
         std::optional<TimePoint> expiresAt = std::nullopt;
     };
 
@@ -51,14 +54,17 @@ private:
     mutable std::mutex mu_;
     HashMap<std::string, Entry, FnvHash> data_;
     MinHeap<Expiry, ExpiryLess> heap_;
+    LruList lru_;
+    std::size_t maxKeys_;
     std::atomic<bool> running_ = true;
     std::thread sweeper_;
+
+    bool sweepExpired();
 
     // callers hold `mu_`
     static bool isExpired(const Entry& v, TimePoint now);
     const Entry* findLive(const std::string& key, TimePoint now) const;
     Entry* findLive(const std::string& key, TimePoint now);
+    void insertNew(const std::string& key, std::string value);
     bool removeEntry(const std::string& key);
-
-    bool sweepExpired();
 };
