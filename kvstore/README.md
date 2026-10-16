@@ -7,6 +7,7 @@ A Redis-style in-memory key-value store
 - internal storage using a self-implemented hashmap (FNV-1a hashing)
 - prefix matching using a self-implemented trie
 - concurrency support using a mutex with 1 thread/client
+- persistence using an append-only file that is replayed on startup
 - raw TCP server on localhost
 
 ## Run
