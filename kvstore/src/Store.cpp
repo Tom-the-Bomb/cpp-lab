@@ -2,15 +2,19 @@
 
 #include <chrono>
 #include <cstddef>
+#include <initializer_list>
+#include <ios>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
 
 #include "LruList.h"
+#include "Tokenize.h"
 
 constexpr int maxWorkPerSweep = 1000;
 
@@ -33,6 +37,10 @@ Store::~Store() {
 // returns `true` if sweep finished only due to `maxWorkPerSweep`
 bool Store::sweepExpired() {
     std::lock_guard<std::mutex> lock(mu_);
+    if (loading_) {
+        return false;
+    }
+
     auto now = Clock::now();
     int popped = 0;
 
@@ -63,7 +71,7 @@ bool Store::isExpired(const Entry& v, TimePoint now) {
 
 const Store::Entry* Store::findLive(const std::string& key, TimePoint now) const {
     const Entry* v = data_.find(key);
-    if (!v || isExpired(*v, now)) {
+    if (!v || (!loading_ && isExpired(*v, now))) {
         return nullptr;
     }
     return v;
@@ -85,6 +93,7 @@ void Store::insertNew(const std::string& key, std::string value) {
     }
     auto node = std::make_unique<LruList::Node>(key);
     lru_.pushFront(node.get());
+    logRecord("SET", {key, value});
     data_.set(key, Entry {std::move(value), std::move(node)});
 }
 
@@ -96,8 +105,24 @@ bool Store::removeEntry(const std::string& key) {
     if (v) {
         lru_.unlink(v->node.get());
     }
-    data_.erase(key);
+    if (data_.erase(key)) {
+        logRecord("DEL", {key});
+    }
     return exists;
+}
+
+void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
+    if (!aof_.is_open()) {
+        return;
+    }
+    std::string text = cmd;
+    for (std::string_view arg : args) {
+        text += " ";
+        text += quote(std::string(arg));
+    }
+    aof_.write(text.data(), text.size());
+    aof_.write("\n", 1);
+    aof_.flush();
 }
 
 void Store::set(const std::string& key, std::string value) {
@@ -106,6 +131,7 @@ void Store::set(const std::string& key, std::string value) {
         v->value = std::move(value);
         v->expiresAt = std::nullopt;
         lru_.moveToFront(v->node.get());
+        logRecord("SET", {key, v->value});
         return;
     }
     insertNew(key, std::move(value));
@@ -156,6 +182,8 @@ bool Store::expire(const std::string& key, std::chrono::seconds s) {
     TimePoint exp = now + s;
     v->expiresAt = exp;
     heap_.push(Expiry {key, exp});
+    long long at = std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now() + s).time_since_epoch().count();
+    logRecord("EXPIREAT", {key, std::to_string(at)});
     return true;
 }
 
@@ -179,6 +207,7 @@ bool Store::persist(const std::string& key) {
         return false;
     }
     v->expiresAt = std::nullopt;
+    logRecord("PERSIST", {key});
     return true;
 }
 
@@ -190,4 +219,16 @@ std::vector<std::string> Store::keysWithPrefix(const std::string& prefix) const 
         return findLive(key, now) == nullptr;
     });
     return keys;
+}
+
+bool Store::openAof(const std::string& path) {
+    std::lock_guard<std::mutex> lock(mu_);
+    loading_ = false;
+    aof_.open(path, std::ios::app);
+    return aof_.is_open();
+}
+
+void Store::beginLoading() {
+    std::lock_guard<std::mutex> lock(mu_);
+    loading_ = true;
 }

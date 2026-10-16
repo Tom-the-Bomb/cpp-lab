@@ -2,10 +2,13 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <fstream>
+#include <initializer_list>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -32,11 +35,13 @@ public:
     std::optional<std::string> get(const std::string& key);
     bool del(const std::string& key);
     bool exists(const std::string& key) const;
+    std::size_t size() const;
     bool expire(const std::string& key, std::chrono::seconds s);
     long long ttl(const std::string& key) const;
     bool persist(const std::string& key);
     std::vector<std::string> keysWithPrefix(const std::string& prefix) const;
-    std::size_t size() const;
+    bool openAof(const std::string& path);
+    void beginLoading();
 private:
     struct Entry {
         std::string value;
@@ -62,7 +67,9 @@ private:
     Trie trie_;
     std::size_t maxKeys_;
     std::atomic<bool> running_ = true;
-    std::thread sweeper_;
+    bool loading_ = false; // guarded by `mu_`
+    std::ofstream aof_;
+    std::thread sweeper_; // `sweeper_` needs to be declared last since threads start as soon as they get constructed
 
     bool sweepExpired();
 
@@ -72,4 +79,5 @@ private:
     Entry* findLive(const std::string& key, TimePoint now);
     void insertNew(const std::string& key, std::string value);
     bool removeEntry(const std::string& key);
+    void logRecord(const std::string& cmd, std::initializer_list<std::string_view> args);
 };

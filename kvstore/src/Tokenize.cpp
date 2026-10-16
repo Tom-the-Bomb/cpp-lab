@@ -8,6 +8,8 @@
 #include <string>
 #include <system_error>
 
+constexpr char hexDigits[] = "0123456789abcdef";
+
 static bool isQuote(char c) {
     return c == '"' || c == '\'';
 }
@@ -144,4 +146,48 @@ Args tokenize(const std::string& line) {
         tokens.push_back(token);
     }
     return tokens;
+}
+
+std::string quote(const std::string& s) {
+    std::string out = "\"";
+    for (unsigned char c : s) {
+        switch (c) {
+            case '\\':
+                out.push_back('\\');
+                out.push_back('\\');
+                break;
+            case '"':
+                out.push_back('\\');
+                out.push_back('"');
+                break;
+            case '\n':
+                out.push_back('\\');
+                out.push_back('n');
+                break;
+            case '\r':
+                out.push_back('\\');
+                out.push_back('r');
+                break;
+            case '\t':
+                out.push_back('\\');
+                out.push_back('t');
+                break;
+            default: {
+                // (0-31) 0x00-0x1F and (127) 0x7F are control characters (\a \b etc.)
+                if (c < 0x20 || c == 0x7F) {
+                    out.push_back('\\');
+                    out.push_back('x');
+                    // (c) a byte (8 bits) is 2 hex digits (4 bits)
+                    // c >> 4 gets the first 4 bits (0-15) -> conv to corresponding char
+                    out.push_back(hexDigits[c >> 4]);
+                    // c & 0xF (1111) gets the last 4 bits
+                    out.push_back(hexDigits[c & 0xF]);
+                } else {
+                    out.push_back(c);
+                }
+            }
+        }
+    }
+    out.push_back('"');
+    return out;
 }

@@ -49,6 +49,11 @@ public:
     Reply execute(Store& store, const Args& args) override;
 };
 
+class ExpireAtCommand : public Command {
+public:
+    Reply execute(Store& store, const Args& args) override;
+};
+
 class TTLCommand : public Command {
 public:
     Reply execute(Store& store, const Args& args) override;

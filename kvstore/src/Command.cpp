@@ -15,6 +15,9 @@
 #include "Store.h"
 #include "Tokenize.h"
 
+// 100 years
+constexpr long long maxSecs = 100LL * 365 * 24 * 60 * 60;
+
 static std::string toUpper(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
         return std::toupper(c);
@@ -49,6 +52,7 @@ CommandTable makeCommands() {
     t["EXISTS"] = std::make_unique<ExistsCommand>();
     t["COUNT"] = std::make_unique<CountCommand>();
     t["EXPIRE"] = std::make_unique<ExpireCommand>();
+    t["EXPIREAT"] = std::make_unique<ExpireAtCommand>();
     t["TTL"] = std::make_unique<TTLCommand>();
     t["PERSIST"] = std::make_unique<PersistCommand>();
     t["KEYS"] = std::make_unique<KeysCommand>();
@@ -118,13 +122,29 @@ Reply ExpireCommand::execute(Store& store, const Args& args) {
     if (!secs) {
         return Reply::error("ERR value is not an integer or out of range");
     }
-    // 100 years
-    constexpr long long maxSecs = 100LL * 365 * 24 * 60 * 60;
     // -ve values delete keys
     if (*secs > maxSecs || *secs < -maxSecs) {
         return Reply::error("ERR invalid expire time in 'expire' command");
     }
     return Reply::integer(store.expire(args[1], std::chrono::seconds(*secs)));
+}
+
+Reply ExpireAtCommand::execute(Store& store, const Args& args) {
+    if (args.size() != 3) {
+        return Reply::error("ERR usage: EXPIREAT <key> <unix seconds>");
+    }
+    std::optional<long long> at = parseInt(args[2]);
+    if (!at) {
+        return Reply::error("ERR value is not an integer or out of range");
+    }
+    long long now = std::chrono::round<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+    long long remaining = *at <= now ? 0 : *at - now; // turn all past expiries to 0 to avoid overflow issues
+    if (remaining > maxSecs) {
+        return Reply::error("ERR invalid expire time in 'expireat' command");
+    }
+    return Reply::integer(store.expire(args[1], std::chrono::seconds(remaining)));
 }
 
 Reply TTLCommand::execute(Store& store, const Args& args) {
