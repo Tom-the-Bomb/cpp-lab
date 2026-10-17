@@ -16,6 +16,10 @@ public:
         return fd_;
     }
 
+    bool isOpen() const {
+        return fd_ >= 0;
+    }
+
     // only 1 Fd can own file descriptor
     Fd(const Fd& other) = delete;
     Fd& operator=(const Fd& other) = delete;
@@ -36,7 +40,7 @@ public:
 
     bool close() {
         bool ok = true;
-        if (fd_ >= 0) {
+        if (isOpen()) {
             ok &= ::close(fd_) >= 0;
         }
         fd_ = -1;

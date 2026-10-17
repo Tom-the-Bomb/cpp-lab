@@ -64,7 +64,7 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
     // IPv4, TCP
     Fd server(socket(AF_INET, SOCK_STREAM, 0));
 
-    if (server.fd() < 0) {
+    if (!server.isOpen()) {
         perror("socket");
         return false;
     }

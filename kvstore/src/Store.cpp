@@ -1,12 +1,15 @@
 #include "Store.h"
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <initializer_list>
 #include <iostream>
@@ -144,11 +147,18 @@ static std::string formatRecord(const std::string& cmd, std::initializer_list<st
 }
 
 void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
-    if (aof_.fd() < 0) {
+    if (!aof_.isOpen()) {
         return;
     }
+    struct stat st;
+    bool haveSize = fstat(aof_.fd(), &st) == 0;
+
     if (!sendAll(aof_.fd(), formatRecord(cmd, args) + "\n")) {
         perror("aof");
+        // truncate a half-written line to the old size before write if write fails
+        if (haveSize && ftruncate(aof_.fd(), st.st_size) < 0) {
+            perror("aof truncate");
+        }
     }
 }
 
@@ -257,7 +267,7 @@ bool Store::openAof() {
     if (!ec) {
         prevAofSize_ = size;
     }
-    return aof_.fd() >= 0;
+    return aof_.isOpen();
 }
 
 void Store::beginLoading() {
@@ -274,7 +284,7 @@ bool Store::rewriteAof(bool force) {
     std::error_code ec;
     TimePoint now = Clock::now();
     if (!force) {
-        if (now < autoRewriteRetryAt_ || aof_.fd() < 0 || !aofGrowth_) {
+        if (now < autoRewriteRetryAt_ || !aof_.isOpen() || !aofGrowth_) {
             return false;
         }
         std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
@@ -284,48 +294,54 @@ bool Store::rewriteAof(bool force) {
     }
 
     std::string tmpPath = aofPath_ + ".tmp";
-    std::uintmax_t newSize = 0;
     Fd tmp(open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644));
-    bool failed = false;
 
+    auto fail = [&](const char* step, const std::string& reason) {
+        std::cerr << "aof rewrite: " << step << ": " << reason << std::endl;
+        tmp.close();
+        std::error_code ignored;
+        std::filesystem::remove(tmpPath, ignored);
+        if (!force) {
+            autoRewriteRetryAt_ = now + rewriteRetryAfter;
+        }
+        return false;
+    };
+
+    if (!tmp.isOpen()) {
+        return fail("open", std::strerror(errno));
+    }
+
+    std::uintmax_t newSize = 0;
     for (const auto& [k, v] : data_) {
         if (isExpired(v, now)) {
             continue;
         }
-        std::string text = formatRecord("SET", {k, v.value});
-        failed |= !sendAll(tmp.fd(), text + "\n");
-        newSize += text.size() + 1;
+        std::string text = formatRecord("SET", {k, v.value}) + "\n";
         if (v.expiresAt) {
-            text = formatRecord("EXPIREAT", {k, std::to_string(ttlToTime(*v.expiresAt - now))});
-            failed |= !sendAll(tmp.fd(), text + "\n");
-            newSize += text.size() + 1;
+            text += formatRecord("EXPIREAT", {k, std::to_string(ttlToTime(*v.expiresAt - now))}) + "\n";
         }
-    }
-    failed |= !syncFd(tmp.fd());
-    failed |= !tmp.close();
-    if (failed) {
-        perror("aof rewrite");
-        std::filesystem::remove(tmpPath);
-        if (!force) {
-            autoRewriteRetryAt_ = now + rewriteRetryAfter;
+        if (!sendAll(tmp.fd(), text)) {
+            return fail("write", std::strerror(errno));
         }
-        return false;
+        newSize += text.size();
     }
+    if (!syncFd(tmp.fd())) {
+        return fail("fsync", std::strerror(errno));
+    }
+    if (!tmp.close()) {
+        return fail("close", std::strerror(errno));
+    }
+
     aof_.close();
     std::filesystem::rename(tmpPath, aofPath_, ec);
     aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_APPEND, 0644));
-    if (aof_.fd() < 0) {
+    if (!aof_.isOpen()) {
         perror("aof reopen");
     }
     if (ec) {
-        std::filesystem::remove(tmpPath);
-        std::cerr << "aof rewrite: " << ec.message() << std::endl;
-        if (!force) {
-            autoRewriteRetryAt_ = now + rewriteRetryAfter;
-        }
-        return false;
+        return fail("rename", ec.message());
     }
     prevAofSize_ = newSize;
     autoRewriteRetryAt_ = {};
-    return aof_.fd() >= 0;
+    return aof_.isOpen();
 }
