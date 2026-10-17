@@ -18,8 +18,7 @@ struct FnvHash {
     }
 };
 
-template <typename K, typename V, typename Hash = std::hash<K>>
-class HashMap {
+template <typename K, typename V, typename Hash = std::hash<K>> class HashMap {
     struct Node {
         K key;
         V value;
@@ -53,8 +52,7 @@ class HashMap {
         capacity_ = newCap;
     }
 
-    template <bool IsConst>
-    class Iter {
+    template <bool IsConst> class Iter {
         using MapPtr = std::conditional_t<IsConst, const HashMap*, HashMap*>;
         using NodePtr = std::conditional_t<IsConst, const Node*, Node*>;
         using ValRef = std::conditional_t<IsConst, const V&, V&>;
@@ -113,8 +111,7 @@ public:
 
     // copy constructor
     HashMap(const HashMap& other):
-        buckets_(new Node*[other.capacity_]()), capacity_(other.capacity_),
-        size_(other.size_), hash_(other.hash_) {
+        buckets_(new Node*[other.capacity_]()), capacity_(other.capacity_), size_(other.size_), hash_(other.hash_) {
         for (std::size_t i = 0; i < capacity_; i++) {
             for (Node* curr = other.buckets_[i]; curr != nullptr; curr = curr->next) {
                 Node* n = new Node {curr->key, curr->value, buckets_[i]};
@@ -125,8 +122,7 @@ public:
 
     // move constructor
     HashMap(HashMap&& other) noexcept:
-        buckets_(other.buckets_), capacity_(other.capacity_),
-        size_(other.size_), hash_(other.hash_) {
+        buckets_(other.buckets_), capacity_(other.capacity_), size_(other.size_), hash_(other.hash_) {
         other.buckets_ = nullptr;
         other.capacity_ = 0;
         other.size_ = 0;

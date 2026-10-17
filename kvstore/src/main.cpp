@@ -30,6 +30,7 @@ static bool makeParentDirs(const std::string& path) {
 int main(int argc, char* argv[]) {
     bool server = false;
     std::string aofPath;
+    std::uintmax_t aofGrowth = 0;
     std::size_t maxKeys = 0;
 
     for (int i = 1; i < argc; i++) {
@@ -38,9 +39,8 @@ int main(int argc, char* argv[]) {
             server = true;
         } else if (arg == "--maxkeys") {
             if (i + 1 < argc) {
-                auto n = parseInt(argv[i + 1]);
-                if (n && *n >= 0) {
-                    maxKeys = static_cast<std::size_t>(*n);
+                if (auto n = parseInt<std::size_t>(argv[i + 1])) {
+                    maxKeys = *n;
                     i++;
                     continue;
                 }
@@ -55,13 +55,24 @@ int main(int argc, char* argv[]) {
             }
             std::cerr << "ERR usage: --aof <path>" << std::endl;
             return 1;
+        } else if (arg == "--aof-resize") {
+            if (i + 1 < argc) {
+                if (auto n = parseInt<std::uintmax_t>(argv[i + 1])) {
+                    aofGrowth = *n;
+                    i++;
+                    continue;
+                }
+            }
+            std::cerr << "ERR usage: --aof-resize <factor>" << std::endl;
+            return 1;
         } else {
-            std::cerr << "ERR usage: [--server] [--maxkeys <count>] [--aof <path>]" << std::endl;
+            std::cerr << "ERR usage: [--server] [--maxkeys <count>] [--aof <path>] [--aof-resize <factor>]"
+                      << std::endl;
             return 1;
         }
     }
 
-    Store store(maxKeys, aofPath);
+    Store store(maxKeys, aofPath, aofGrowth);
     CommandTable t = makeCommands();
 
     if (!aofPath.empty()) {

@@ -5,8 +5,7 @@
 #include <utility>
 #include <vector>
 
-template <typename T, typename Less = std::less<T>>
-class MinHeap {
+template <typename T, typename Less = std::less<T>> class MinHeap {
 public:
     void pop() {
         if (empty()) {
@@ -77,7 +76,8 @@ private:
                 return;
             }
             std::swap(data_[i], data_[smallest]);
-            // the element we need to keep sifting down is now in the spot the originally min element was at
+            // the element we need to keep sifting down is now in the spot the originally min
+            // element was at
             i = smallest;
         }
     }

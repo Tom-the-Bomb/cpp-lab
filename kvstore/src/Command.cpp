@@ -119,7 +119,7 @@ Reply ExpireCommand::execute(Store& store, const Args& args) {
     if (args.size() != 3) {
         return Reply::error("ERR usage: EXPIRE <key> <seconds>");
     }
-    std::optional<long long> secs = parseInt(args[2]);
+    std::optional<long long> secs = parseInt<long long>(args[2]);
     if (!secs) {
         return Reply::error("ERR value is not an integer or out of range");
     }
@@ -134,13 +134,12 @@ Reply ExpireAtCommand::execute(Store& store, const Args& args) {
     if (args.size() != 3) {
         return Reply::error("ERR usage: EXPIREAT <key> <unix seconds>");
     }
-    std::optional<long long> at = parseInt(args[2]);
+    std::optional<long long> at = parseInt<long long>(args[2]);
     if (!at) {
         return Reply::error("ERR value is not an integer or out of range");
     }
-    long long now = std::chrono::round<std::chrono::seconds>(
-                        std::chrono::system_clock::now().time_since_epoch())
-                        .count();
+    long long now =
+        std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     long long remaining = *at <= now ? 0 : *at - now; // turn all past expiries to 0 to avoid overflow issues
     if (remaining > maxSecs) {
         return Reply::error("ERR invalid expire time in 'expireat' command");
@@ -185,5 +184,5 @@ Reply RewriteAOFCommand::execute(Store& store, const Args& args) {
     if (args.size() != 1) {
         return Reply::error("ERR usage: REWRITEAOF");
     }
-    return Reply::integer(store.rewriteAof());
+    return Reply::integer(store.rewriteAof(true));
 }

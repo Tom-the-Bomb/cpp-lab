@@ -1,7 +1,7 @@
 BasedOnStyle: LLVM
 IndentWidth: 4
 AccessModifierOffset: -4
-ColumnLimit: 0
+ColumnLimit: 120
 PointerAlignment: Left
 IndentCaseLabels: true
 EmptyLineBeforeAccessModifier: Leave
@@ -28,7 +28,7 @@ IncludeBlocks: Regroup
 IncludeCategories:
   - Regex: '^<.*\.h>'
     Priority: 1
-  - Regex: '^<.*>'
+  - Regex: "^<.*>"
     Priority: 2
   - Regex: '^".*"'
     Priority: 3

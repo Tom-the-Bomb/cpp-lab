@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <initializer_list>
@@ -23,13 +24,15 @@
 #include "LruList.h"
 #include "Tokenize.h"
 
+constexpr std::uintmax_t minResizeAofSize = 65536; // 64kB
 constexpr int maxWorkPerSweep = 1000;
 
 static long long ttlToTime(Store::Clock::duration s) {
     return std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now() + s).time_since_epoch().count();
 }
 
-Store::Store(std::size_t maxKeys, std::string aofPath): maxKeys_(maxKeys), aofPath_(std::move(aofPath)), sweeper_([this] {
+Store::Store(std::size_t maxKeys, std::string aofPath, std::uintmax_t aofGrowth):
+    maxKeys_(maxKeys), aofPath_(std::move(aofPath)), aofGrowth_(aofGrowth), sweeper_([this] {
         while (running_) {
             if (sweepExpired()) {
                 // tell scheduler to allow core to run other threads
@@ -37,6 +40,7 @@ Store::Store(std::size_t maxKeys, std::string aofPath): maxKeys_(maxKeys), aofPa
             } else {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
+            rewriteAof(false);
         }
     }) {}
 
@@ -246,6 +250,11 @@ bool Store::openAof() {
     std::lock_guard<std::mutex> lock(mu_);
     loading_ = false;
     aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644));
+    std::error_code ec;
+    std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
+    if (!ec) {
+        prevAofSize_ = size;
+    }
     return aof_.fd() >= 0;
 }
 
@@ -254,12 +263,25 @@ void Store::beginLoading() {
     loading_ = true;
 }
 
-bool Store::rewriteAof() {
+bool Store::rewriteAof(bool force) {
     if (aofPath_.empty()) {
         return false;
     }
     std::lock_guard<std::mutex> lock(mu_);
+
+    std::error_code ec;
+    if (!force) {
+        if (aof_.fd() < 0 || !aofGrowth_) {
+            return false;
+        }
+        std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
+        if (ec || size < minResizeAofSize || size < aofGrowth_ * prevAofSize_) {
+            return false;
+        }
+    }
+
     std::string tmpPath = aofPath_ + ".tmp";
+    std::uintmax_t newSize = 0;
     Fd tmp(open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644));
     TimePoint now = Clock::now();
     bool failed = false;
@@ -270,9 +292,11 @@ bool Store::rewriteAof() {
         }
         std::string text = formatRecord("SET", {k, v.value});
         failed |= !sendAll(tmp.fd(), text + "\n");
+        newSize += text.size() + 1;
         if (v.expiresAt) {
             text = formatRecord("EXPIREAT", {k, std::to_string(ttlToTime(*v.expiresAt - now))});
             failed |= !sendAll(tmp.fd(), text + "\n");
+            newSize += text.size() + 1;
         }
     }
     failed |= !syncFd(tmp.fd());
@@ -283,12 +307,12 @@ bool Store::rewriteAof() {
         return false;
     }
     aof_.close();
-    std::error_code ec;
     std::filesystem::rename(tmpPath, aofPath_, ec);
     aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_APPEND, 0644));
     if (ec) {
         std::filesystem::remove(tmpPath);
         std::cerr << "aof rewrite: " << ec.message() << std::endl;
     }
+    prevAofSize_ = newSize;
     return !ec && aof_.fd() >= 0;
 }

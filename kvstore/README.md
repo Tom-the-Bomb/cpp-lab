@@ -8,6 +8,7 @@ A Redis-style in-memory key-value store
 - prefix matching using a self-implemented trie
 - concurrency support using a mutex with 1 thread/client
 - persistence using an append-only file that is replayed on startup
+  - compaction of AOF file
 - raw TCP server on localhost
 
 ## Run

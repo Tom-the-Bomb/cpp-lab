@@ -2,6 +2,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <mutex>
@@ -22,7 +23,7 @@ public:
     using Clock = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
 
-    explicit Store(std::size_t maxKeys = 0, std::string aofPath = "");
+    explicit Store(std::size_t maxKeys = 0, std::string aofPath = "", std::uintmax_t = 0);
     ~Store();
 
     // store is non-copyable due to mutex and thread
@@ -42,7 +43,7 @@ public:
     std::vector<std::string> keysWithPrefix(const std::string& prefix) const;
     bool openAof();
     void beginLoading();
-    bool rewriteAof();
+    bool rewriteAof(bool force);
 private:
     struct Entry {
         std::string value;
@@ -68,11 +69,15 @@ private:
     Trie trie_;
     std::size_t maxKeys_;
     std::atomic<bool> running_ = true;
+    // the store is currently being rebuilt from the AOF
+    // used to temporarily pause expiration checks
     bool loading_ = false; // guarded by `mu_`
     Fd aof_;
     TimePoint lastSync_; // sweeper thread
     const std::string aofPath_;
-    std::thread sweeper_; // `sweeper_` needs to be declared last since threads start as soon as they get constructed
+    const std::uintmax_t aofGrowth_;
+    std::uintmax_t prevAofSize_ = 0;
+    std::thread sweeper_; // `sweeper_` needs to be declared last since threads start immediately
 
     bool sweepExpired();
 

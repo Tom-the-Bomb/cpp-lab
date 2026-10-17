@@ -1,12 +1,10 @@
 #include "Tokenize.h"
 
 #include <cctype>
-#include <charconv>
 #include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <system_error>
 
 constexpr char hexDigits[] = "0123456789abcdef";
 
@@ -45,21 +43,6 @@ static std::optional<char> toEscape(char c) {
         default:
             return std::nullopt;
     }
-}
-
-// stoll() but according to Redis behavior
-std::optional<long long> parseInt(const std::string& s) {
-    long long n;
-    // ptr to 1 past the last character
-    const char* end = s.data() + s.size();
-    // `ptr` is where it stopped, `s` being int means `ptr` should be 1 past the last character
-    // otherwise something like `10abc` was parsed
-    // `ec` is error code, `errc` is success
-    auto [ptr, ec] = std::from_chars(s.data(), end, n);
-    if (ec != std::errc {} || ptr != end) {
-        return std::nullopt;
-    }
-    return n;
 }
 
 Args tokenize(const std::string& line) {

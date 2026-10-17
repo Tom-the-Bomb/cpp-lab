@@ -76,7 +76,8 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
     sockaddr_in addr {};
     // IPv4
     addr.sin_family = AF_INET;
-    // host to network (little endian -> big endian, byte reversal), short (16 bits): convert port to network byte order
+    // host to network (little endian -> big endian, byte reversal), short (16 bits): convert port
+    // to network byte order
     addr.sin_port = htons(port);
     // host to network, long (32 bits): 127.0.0.1
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);

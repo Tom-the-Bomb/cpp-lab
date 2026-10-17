@@ -5,14 +5,7 @@
 
 struct Reply {
     // follows RESP (REdis Serialization Protocol)
-    enum class Type {
-        Simple,
-        Error,
-        Integer,
-        Bulk,
-        Nil,
-        Array
-    };
+    enum class Type { Simple, Error, Integer, Bulk, Nil, Array };
 
     Type type = Type::Nil;
     std::string str;
