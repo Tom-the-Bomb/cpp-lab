@@ -56,6 +56,7 @@ CommandTable makeCommands() {
     t["TTL"] = std::make_unique<TTLCommand>();
     t["PERSIST"] = std::make_unique<PersistCommand>();
     t["KEYS"] = std::make_unique<KeysCommand>();
+    t["REWRITEAOF"] = std::make_unique<RewriteAOFCommand>();
     return t;
 }
 
@@ -178,4 +179,11 @@ Reply KeysCommand::execute(Store& store, const Args& args) {
         out.push_back(Reply::bulk(std::move(pre)));
     }
     return Reply::array(std::move(out));
+}
+
+Reply RewriteAOFCommand::execute(Store& store, const Args& args) {
+    if (args.size() != 1) {
+        return Reply::error("ERR usage: REWRITEAOF");
+    }
+    return Reply::integer(store.rewriteAof());
 }

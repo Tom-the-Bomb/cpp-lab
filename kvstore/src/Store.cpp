@@ -2,13 +2,18 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <initializer_list>
 #include <ios>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -18,7 +23,11 @@
 
 constexpr int maxWorkPerSweep = 1000;
 
-Store::Store(std::size_t maxKeys): maxKeys_(maxKeys), sweeper_([this] {
+static long long ttlToTime(Store::Clock::duration s) {
+    return std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now() + s).time_since_epoch().count();
+}
+
+Store::Store(std::size_t maxKeys, std::string aofPath): maxKeys_(maxKeys), aofPath_(std::move(aofPath)), sweeper_([this] {
         while (running_) {
             if (sweepExpired()) {
                 // tell scheduler to allow core to run other threads
@@ -111,18 +120,26 @@ bool Store::removeEntry(const std::string& key) {
     return exists;
 }
 
-void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
-    if (!aof_.is_open()) {
-        return;
-    }
+static std::string formatRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
     std::string text = cmd;
     for (std::string_view arg : args) {
         text += " ";
         text += quote(std::string(arg));
     }
-    aof_.write(text.data(), text.size());
-    aof_.write("\n", 1);
+    return text;
+}
+
+void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
+    if (!aof_.is_open()) {
+        return;
+    }
+    std::string text = formatRecord(cmd, args);
+    aof_ << text << "\n";
     aof_.flush();
+    if (!aof_) {
+        perror("aof");
+        aof_.clear();
+    }
 }
 
 void Store::set(const std::string& key, std::string value) {
@@ -182,8 +199,8 @@ bool Store::expire(const std::string& key, std::chrono::seconds s) {
     TimePoint exp = now + s;
     v->expiresAt = exp;
     heap_.push(Expiry {key, exp});
-    long long at = std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now() + s).time_since_epoch().count();
-    logRecord("EXPIREAT", {key, std::to_string(at)});
+
+    logRecord("EXPIREAT", {key, std::to_string(ttlToTime(s))});
     return true;
 }
 
@@ -221,14 +238,52 @@ std::vector<std::string> Store::keysWithPrefix(const std::string& prefix) const 
     return keys;
 }
 
-bool Store::openAof(const std::string& path) {
+bool Store::openAof() {
     std::lock_guard<std::mutex> lock(mu_);
     loading_ = false;
-    aof_.open(path, std::ios::app);
+    aof_.open(aofPath_, std::ios::app);
     return aof_.is_open();
 }
 
 void Store::beginLoading() {
     std::lock_guard<std::mutex> lock(mu_);
     loading_ = true;
+}
+
+bool Store::rewriteAof() {
+    if (aofPath_.empty()) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mu_);
+    std::string path = aofPath_ + ".tmp";
+    std::ofstream tmp(path);
+    TimePoint now = Clock::now();
+
+    for (const auto& [k, v] : data_) {
+        if (isExpired(v, now)) {
+            continue;
+        }
+        std::string text = formatRecord("SET", {k, v.value});
+        tmp << text << "\n";
+        if (v.expiresAt) {
+            text = formatRecord("EXPIREAT", {k, std::to_string(ttlToTime(*v.expiresAt - now))});
+            tmp << text << "\n";
+        }
+    }
+    tmp.flush();
+    tmp.close();
+    if (!tmp) {
+        perror("aof rewrite");
+        std::filesystem::remove(path);
+        return false;
+    }
+    aof_.close();
+    std::error_code ec;
+    std::filesystem::rename(path, aofPath_, ec);
+    aof_.open(aofPath_, std::ios::app);
+    if (ec) {
+        std::filesystem::remove(path);
+        std::cerr << "aof rewrite: " << ec.message() << std::endl;
+    }
+    return !ec && aof_.is_open();
 }

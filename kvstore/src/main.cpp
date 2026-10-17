@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    Store store(maxKeys);
+    Store store(maxKeys, aofPath);
     CommandTable t = makeCommands();
 
     if (!aofPath.empty()) {
@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        if (!makeParentDirs(aofPath) || !store.openAof(aofPath)) {
+        if (!makeParentDirs(aofPath) || !store.openAof()) {
             perror(("aof: " + aofPath).c_str());
             return 1;
         }

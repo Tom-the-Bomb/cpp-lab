@@ -22,7 +22,7 @@ public:
     using Clock = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
 
-    explicit Store(std::size_t maxKeys = 0);
+    explicit Store(std::size_t maxKeys = 0, std::string aofPath = "");
     ~Store();
 
     // store is non-copyable due to mutex and thread
@@ -40,8 +40,9 @@ public:
     long long ttl(const std::string& key) const;
     bool persist(const std::string& key);
     std::vector<std::string> keysWithPrefix(const std::string& prefix) const;
-    bool openAof(const std::string& path);
+    bool openAof();
     void beginLoading();
+    bool rewriteAof();
 private:
     struct Entry {
         std::string value;
@@ -69,6 +70,7 @@ private:
     std::atomic<bool> running_ = true;
     bool loading_ = false; // guarded by `mu_`
     std::ofstream aof_;
+    const std::string aofPath_;
     std::thread sweeper_; // `sweeper_` needs to be declared last since threads start as soon as they get constructed
 
     bool sweepExpired();
