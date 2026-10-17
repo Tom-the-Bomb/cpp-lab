@@ -1,1 +1,1 @@
-add_executable(kvstore src/main.cpp src/Store.cpp src/Command.cpp src/Reply.cpp src/Tokenize.cpp src/Server.cpp)
+add_executable(kvstore src/main.cpp src/Store.cpp src/Command.cpp src/Reply.cpp src/Tokenize.cpp src/Server.cpp src/Fd.cpp)

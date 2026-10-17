@@ -2,7 +2,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
-#include <fstream>
 #include <initializer_list>
 #include <memory>
 #include <mutex>
@@ -12,6 +11,7 @@
 #include <thread>
 #include <vector>
 
+#include "Fd.h"
 #include "HashMap.h"
 #include "LruList.h"
 #include "MinHeap.h"
@@ -69,7 +69,8 @@ private:
     std::size_t maxKeys_;
     std::atomic<bool> running_ = true;
     bool loading_ = false; // guarded by `mu_`
-    std::ofstream aof_;
+    Fd aof_;
+    TimePoint lastSync_; // sweeper thread
     const std::string aofPath_;
     std::thread sweeper_; // `sweeper_` needs to be declared last since threads start as soon as they get constructed
 

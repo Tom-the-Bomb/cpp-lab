@@ -1,3 +1,4 @@
+
 #include "Server.h"
 
 #include <arpa/inet.h>
@@ -16,60 +17,9 @@
 #include <utility>
 
 #include "Command.h"
+#include "Fd.h"
 #include "Reply.h"
 #include "Store.h"
-
-class Socket {
-public:
-    explicit Socket(int fd): fd_(fd) {}
-    ~Socket() {
-        if (fd_ >= 0) {
-            close(fd_);
-        }
-    }
-
-    int fd() const {
-        return fd_;
-    }
-
-    // only 1 socket can own file descriptor
-    Socket(const Socket& other) = delete;
-    Socket& operator=(const Socket& other) = delete;
-
-    Socket(Socket&& other) noexcept: fd_(other.fd_) {
-        other.fd_ = -1;
-    }
-
-    Socket& operator=(Socket&& other) noexcept {
-        if (this == &other) {
-            return *this;
-        }
-        if (fd_ >= 0) {
-            close(fd_);
-        }
-        fd_ = other.fd_;
-        other.fd_ = -1;
-        return *this;
-    }
-private:
-    int fd_;
-};
-
-static bool sendAll(int fd, const std::string& data) {
-    std::size_t len = data.size();
-    std::size_t start = 0;
-    while (len > 0) {
-        // send may only send some parts at the start
-        ssize_t sent = send(fd, data.data() + start, len, 0);
-        // -1 = error, 0 = no bytes send (inf loop)
-        if (sent <= 0) {
-            return false;
-        }
-        len -= sent;
-        start += sent;
-    }
-    return true;
-}
 
 static void handleClient(int fd, Store& store, const CommandTable& table) {
     std::string buf;
@@ -112,7 +62,7 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
 
     // create socket returns file descriptor
     // IPv4, TCP
-    Socket server(socket(AF_INET, SOCK_STREAM, 0));
+    Fd server(socket(AF_INET, SOCK_STREAM, 0));
 
     if (server.fd() < 0) {
         perror("socket");
@@ -156,7 +106,7 @@ bool runServer(Store& store, const CommandTable& commands, int port) {
             }
             continue;
         }
-        Socket client(fd);
+        Fd client(fd);
         std::thread([sock = std::move(client), &store, &commands] {
             handleClient(sock.fd(), store, commands);
         }).detach();

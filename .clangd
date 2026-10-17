@@ -6,5 +6,5 @@ Diagnostics:
   MissingIncludes: Strict
   Includes:
     # macOS-internal headers clangd suggests instead of the portable POSIX ones
-    # (htons -> <arpa/inet.h>, ssize_t -> <sys/types.h>, SIGPIPE -> <signal.h>)
-    IgnoreHeader: ['sys/_.*\.h', 'sys/signal\.h']
+    # (htons -> <arpa/inet.h>, ssize_t -> <sys/types.h>, SIGPIPE -> <signal.h>, open/O_* -> <fcntl.h>)
+    IgnoreHeader: ['sys/_.*\.h', 'sys/signal\.h', 'sys/fcntl\.h']

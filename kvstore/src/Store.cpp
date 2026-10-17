@@ -1,12 +1,13 @@
 #include "Store.h"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <initializer_list>
-#include <ios>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -18,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "Fd.h"
 #include "LruList.h"
 #include "Tokenize.h"
 
@@ -49,8 +51,14 @@ bool Store::sweepExpired() {
     if (loading_) {
         return false;
     }
-
     auto now = Clock::now();
+
+    if (now - lastSync_ >= std::chrono::seconds(1)) {
+        if (!syncFd(aof_.fd())) {
+            perror("aof fsync");
+        }
+        lastSync_ = now;
+    }
     int popped = 0;
 
     while (!heap_.empty() && heap_.top().when <= now) {
@@ -130,15 +138,11 @@ static std::string formatRecord(const std::string& cmd, std::initializer_list<st
 }
 
 void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
-    if (!aof_.is_open()) {
+    if (aof_.fd() < 0) {
         return;
     }
-    std::string text = formatRecord(cmd, args);
-    aof_ << text << "\n";
-    aof_.flush();
-    if (!aof_) {
+    if (!sendAll(aof_.fd(), formatRecord(cmd, args) + "\n")) {
         perror("aof");
-        aof_.clear();
     }
 }
 
@@ -241,8 +245,8 @@ std::vector<std::string> Store::keysWithPrefix(const std::string& prefix) const 
 bool Store::openAof() {
     std::lock_guard<std::mutex> lock(mu_);
     loading_ = false;
-    aof_.open(aofPath_, std::ios::app);
-    return aof_.is_open();
+    aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644));
+    return aof_.fd() >= 0;
 }
 
 void Store::beginLoading() {
@@ -255,35 +259,36 @@ bool Store::rewriteAof() {
         return false;
     }
     std::lock_guard<std::mutex> lock(mu_);
-    std::string path = aofPath_ + ".tmp";
-    std::ofstream tmp(path);
+    std::string tmpPath = aofPath_ + ".tmp";
+    Fd tmp(open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644));
     TimePoint now = Clock::now();
+    bool failed = false;
 
     for (const auto& [k, v] : data_) {
         if (isExpired(v, now)) {
             continue;
         }
         std::string text = formatRecord("SET", {k, v.value});
-        tmp << text << "\n";
+        failed |= !sendAll(tmp.fd(), text + "\n");
         if (v.expiresAt) {
             text = formatRecord("EXPIREAT", {k, std::to_string(ttlToTime(*v.expiresAt - now))});
-            tmp << text << "\n";
+            failed |= !sendAll(tmp.fd(), text + "\n");
         }
     }
-    tmp.flush();
-    tmp.close();
-    if (!tmp) {
+    failed |= !syncFd(tmp.fd());
+    failed |= !tmp.close();
+    if (failed) {
         perror("aof rewrite");
-        std::filesystem::remove(path);
+        std::filesystem::remove(tmpPath);
         return false;
     }
     aof_.close();
     std::error_code ec;
-    std::filesystem::rename(path, aofPath_, ec);
-    aof_.open(aofPath_, std::ios::app);
+    std::filesystem::rename(tmpPath, aofPath_, ec);
+    aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_APPEND, 0644));
     if (ec) {
-        std::filesystem::remove(path);
+        std::filesystem::remove(tmpPath);
         std::cerr << "aof rewrite: " << ec.message() << std::endl;
     }
-    return !ec && aof_.is_open();
+    return !ec && aof_.fd() >= 0;
 }
