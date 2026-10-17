@@ -77,6 +77,7 @@ private:
     const std::string aofPath_;
     const std::uintmax_t aofGrowth_;
     std::uintmax_t prevAofSize_ = 0;
+    TimePoint autoRewriteRetryAt_;
     std::thread sweeper_; // `sweeper_` needs to be declared last since threads start immediately
 
     bool sweepExpired();

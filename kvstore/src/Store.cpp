@@ -26,6 +26,8 @@
 
 constexpr std::uintmax_t minResizeAofSize = 65536; // 64kB
 constexpr int maxWorkPerSweep = 1000;
+// backoff on failure to avoid retry spam
+constexpr std::chrono::duration rewriteRetryAfter = std::chrono::seconds(60);
 
 static long long ttlToTime(Store::Clock::duration s) {
     return std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now() + s).time_since_epoch().count();
@@ -270,8 +272,9 @@ bool Store::rewriteAof(bool force) {
     std::lock_guard<std::mutex> lock(mu_);
 
     std::error_code ec;
+    TimePoint now = Clock::now();
     if (!force) {
-        if (aof_.fd() < 0 || !aofGrowth_) {
+        if (now < autoRewriteRetryAt_ || aof_.fd() < 0 || !aofGrowth_) {
             return false;
         }
         std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
@@ -283,7 +286,6 @@ bool Store::rewriteAof(bool force) {
     std::string tmpPath = aofPath_ + ".tmp";
     std::uintmax_t newSize = 0;
     Fd tmp(open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644));
-    TimePoint now = Clock::now();
     bool failed = false;
 
     for (const auto& [k, v] : data_) {
@@ -304,15 +306,26 @@ bool Store::rewriteAof(bool force) {
     if (failed) {
         perror("aof rewrite");
         std::filesystem::remove(tmpPath);
+        if (!force) {
+            autoRewriteRetryAt_ = now + rewriteRetryAfter;
+        }
         return false;
     }
     aof_.close();
     std::filesystem::rename(tmpPath, aofPath_, ec);
     aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_APPEND, 0644));
+    if (aof_.fd() < 0) {
+        perror("aof reopen");
+    }
     if (ec) {
         std::filesystem::remove(tmpPath);
         std::cerr << "aof rewrite: " << ec.message() << std::endl;
+        if (!force) {
+            autoRewriteRetryAt_ = now + rewriteRetryAfter;
+        }
+        return false;
     }
     prevAofSize_ = newSize;
-    return !ec && aof_.fd() >= 0;
+    autoRewriteRetryAt_ = {};
+    return aof_.fd() >= 0;
 }
