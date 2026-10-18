@@ -10,4 +10,6 @@ set(SANITIZERS "address,undefined" CACHE STRING "value passed to -fsanitize=")
 add_compile_options(-Wall -Wextra -Wpedantic -g -fsanitize=${SANITIZERS})
 add_link_options(-fsanitize=${SANITIZERS})
 
+add_subdirectory(shared)
 add_subdirectory(kvstore)
+add_subdirectory(minidb)

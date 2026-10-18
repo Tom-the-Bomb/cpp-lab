@@ -19,8 +19,8 @@
 #include "Command.h"
 #include "Fd.h"
 #include "Reply.h"
+#include "Resp.h"
 #include "Store.h"
-#include "Tokenize.h"
 
 static void handleClient(int fd, Store& store, const CommandTable& table) {
     std::string buf;

@@ -1,6 +1,5 @@
 #pragma once
 #include <charconv>
-#include <cstddef>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -27,16 +26,4 @@ Args tokenize(const std::string& line);
 
 std::string quote(const std::string& s);
 
-enum class ParseStatus {
-    Complete,
-    Incomplete,
-    Invalid,
-};
-
-struct ParseResult {
-    ParseStatus status;
-    Args args = {};
-    std::size_t consumed = 0;
-};
-
-ParseResult parseResp(const std::string& buf);
+std::string toUpper(std::string s);

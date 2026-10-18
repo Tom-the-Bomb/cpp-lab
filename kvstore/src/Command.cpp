@@ -1,7 +1,5 @@
 #include "Command.h"
 
-#include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <climits>
 #include <cstddef>
@@ -27,13 +25,6 @@ static bool keyTooLong(const std::string& key) {
 
 static Reply keyTooLongError() {
     return Reply::error("ERR key too long (max " + std::to_string(maxKeySize) + " bytes)");
-}
-
-static std::string toUpper(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return std::toupper(c);
-    });
-    return s;
 }
 
 std::optional<Reply> handleArgs(Store& store, const CommandTable& commands, const Args& args) {
