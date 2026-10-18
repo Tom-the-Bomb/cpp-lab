@@ -4,7 +4,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstddef>
-#include <memory>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -15,8 +15,8 @@
 #include "Store.h"
 #include "Tokenize.h"
 
-// 100 years
-constexpr long long maxSecs = 100LL * 365 * 24 * 60 * 60;
+constexpr long long maxSecs = 100LL * 365 * 24 * 60 * 60; // 100 years
+constexpr std::size_t variadic = std::numeric_limits<std::size_t>::max();
 
 static std::string toUpper(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
@@ -33,7 +33,11 @@ std::optional<Reply> handleArgs(Store& store, const CommandTable& commands, cons
     if (it == commands.end()) {
         return Reply::error("ERR unknown command '" + args[0] + "'");
     }
-    return it->second->execute(store, args);
+    const Command& cmd = it->second;
+    if (args.size() < cmd.minArgs || args.size() > cmd.maxArgs) {
+        return Reply::error(std::string("ERR usage: ") + cmd.usage);
+    }
+    return cmd.run(store, args);
 }
 
 std::optional<Reply> handleLine(Store& store, const CommandTable& commands, const std::string& line) {
@@ -46,27 +50,7 @@ std::optional<Reply> handleLine(Store& store, const CommandTable& commands, cons
     return handleArgs(store, commands, args);
 }
 
-CommandTable makeCommands() {
-    CommandTable t;
-    t["GET"] = std::make_unique<GetCommand>();
-    t["SET"] = std::make_unique<SetCommand>();
-    t["SETNX"] = std::make_unique<SetNXCommand>();
-    t["DEL"] = std::make_unique<DelCommand>();
-    t["EXISTS"] = std::make_unique<ExistsCommand>();
-    t["COUNT"] = std::make_unique<CountCommand>();
-    t["EXPIRE"] = std::make_unique<ExpireCommand>();
-    t["EXPIREAT"] = std::make_unique<ExpireAtCommand>();
-    t["TTL"] = std::make_unique<TTLCommand>();
-    t["PERSIST"] = std::make_unique<PersistCommand>();
-    t["KEYS"] = std::make_unique<KeysCommand>();
-    t["REWRITEAOF"] = std::make_unique<RewriteAOFCommand>();
-    return t;
-}
-
-Reply GetCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 2) {
-        return Reply::error("ERR usage: GET <key>");
-    }
+static Reply get(Store& store, const Args& args) {
     auto v = store.get(args[1]);
     if (!v) {
         return Reply::nil();
@@ -74,25 +58,16 @@ Reply GetCommand::execute(Store& store, const Args& args) {
     return Reply::bulk(std::move(*v));
 }
 
-Reply SetCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 3) {
-        return Reply::error("ERR usage: SET <key> <value>");
-    }
+static Reply set(Store& store, const Args& args) {
     store.set(args[1], args[2]);
     return Reply::ok();
 }
 
-Reply SetNXCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 3) {
-        return Reply::error("ERR usage: SETNX <key> <value>");
-    }
+static Reply setNX(Store& store, const Args& args) {
     return Reply::integer(store.setIfAbsent(args[1], args[2]));
 }
 
-Reply DelCommand::execute(Store& store, const Args& args) {
-    if (args.size() < 2) {
-        return Reply::error("ERR usage: DEL <...keys>");
-    }
+static Reply del(Store& store, const Args& args) {
     int cnt = 0;
     for (std::size_t i = 1; i < args.size(); i++) {
         cnt += store.del(args[i]);
@@ -100,10 +75,7 @@ Reply DelCommand::execute(Store& store, const Args& args) {
     return Reply::integer(cnt);
 }
 
-Reply ExistsCommand::execute(Store& store, const Args& args) {
-    if (args.size() < 2) {
-        return Reply::error("ERR usage: EXISTS <...keys>");
-    }
+static Reply exists(Store& store, const Args& args) {
     int cnt = 0;
     for (std::size_t i = 1; i < args.size(); i++) {
         cnt += store.exists(args[i]);
@@ -111,17 +83,11 @@ Reply ExistsCommand::execute(Store& store, const Args& args) {
     return Reply::integer(cnt);
 }
 
-Reply CountCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 1) {
-        return Reply::error("ERR usage: COUNT");
-    }
+static Reply count(Store& store, const Args&) {
     return Reply::integer(store.size());
 }
 
-Reply ExpireCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 3) {
-        return Reply::error("ERR usage: EXPIRE <key> <seconds>");
-    }
+static Reply expire(Store& store, const Args& args) {
     std::optional<long long> secs = parseInt<long long>(args[2]);
     if (!secs) {
         return Reply::error("ERR value is not an integer or out of range");
@@ -133,10 +99,7 @@ Reply ExpireCommand::execute(Store& store, const Args& args) {
     return Reply::integer(store.expire(args[1], std::chrono::seconds(*secs)));
 }
 
-Reply ExpireAtCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 3) {
-        return Reply::error("ERR usage: EXPIREAT <key> <unix seconds>");
-    }
+static Reply expireAt(Store& store, const Args& args) {
     std::optional<long long> at = parseInt<long long>(args[2]);
     if (!at) {
         return Reply::error("ERR value is not an integer or out of range");
@@ -150,24 +113,15 @@ Reply ExpireAtCommand::execute(Store& store, const Args& args) {
     return Reply::integer(store.expire(args[1], std::chrono::seconds(remaining)));
 }
 
-Reply TTLCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 2) {
-        return Reply::error("ERR usage: TTL <key>");
-    }
+static Reply ttl(Store& store, const Args& args) {
     return Reply::integer(store.ttl(args[1]));
 }
 
-Reply PersistCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 2) {
-        return Reply::error("ERR usage: PERSIST <key>");
-    }
+static Reply persist(Store& store, const Args& args) {
     return Reply::integer(store.persist(args[1]));
 }
 
-Reply KeysCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 2) {
-        return Reply::error("ERR usage: KEYS <prefix>");
-    }
+static Reply keys(Store& store, const Args& args) {
     std::string pre = args[1];
     std::vector<Reply> out;
 
@@ -183,9 +137,23 @@ Reply KeysCommand::execute(Store& store, const Args& args) {
     return Reply::array(std::move(out));
 }
 
-Reply RewriteAOFCommand::execute(Store& store, const Args& args) {
-    if (args.size() != 1) {
-        return Reply::error("ERR usage: REWRITEAOF");
-    }
+static Reply rewriteAof(Store& store, const Args&) {
     return Reply::integer(store.rewriteAof(true));
+}
+
+CommandTable makeCommands() {
+    return {
+        {"GET", {get, 2, 2, "GET <key>"}},
+        {"SET", {set, 3, 3, "SET <key> <value>"}},
+        {"SETNX", {setNX, 3, 3, "SETNX <key> <value>"}},
+        {"DEL", {del, 2, variadic, "DEL <...keys>"}},
+        {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>"}},
+        {"COUNT", {count, 1, 1, "COUNT"}},
+        {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>"}},
+        {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>"}},
+        {"TTL", {ttl, 2, 2, "TTL <key>"}},
+        {"PERSIST", {persist, 2, 2, "PERSIST <key>"}},
+        {"KEYS", {keys, 2, 2, "KEYS <prefix>"}},
+        {"REWRITEAOF", {rewriteAof, 1, 1, "REWRITEAOF"}},
+    };
 }
