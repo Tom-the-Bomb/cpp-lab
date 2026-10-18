@@ -61,3 +61,6 @@ struct Reply {
 
 // used for REPL, nc
 std::string toText(const Reply& r);
+
+// used for server response
+std::string toResp(const Reply& r);

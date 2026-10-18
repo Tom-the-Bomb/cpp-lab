@@ -29,3 +29,26 @@ std::string toText(const Reply& r) {
     }
     return "";
 }
+
+std::string toResp(const Reply& r) {
+    switch (r.type) {
+        case Reply::Type::Simple:
+            return "+" + r.str + "\r\n";
+        case Reply::Type::Error:
+            return "-" + r.str + "\r\n";
+        case Reply::Type::Integer:
+            return ":" + std::to_string(r.num) + "\r\n";
+        case Reply::Type::Bulk:
+            return "$" + std::to_string(r.str.size()) + "\r\n" + r.str + "\r\n";
+        case Reply::Type::Nil:
+            return "$-1\r\n";
+        case Reply::Type::Array: {
+            std::string out = "*" + std::to_string(r.items.size()) + "\r\n";
+            for (const Reply& item : r.items) {
+                out += toResp(item);
+            }
+            return out;
+        }
+    }
+    return "";
+}

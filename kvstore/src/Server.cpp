@@ -20,6 +20,7 @@
 #include "Fd.h"
 #include "Reply.h"
 #include "Store.h"
+#include "Tokenize.h"
 
 static void handleClient(int fd, Store& store, const CommandTable& table) {
     std::string buf;
@@ -32,6 +33,33 @@ static void handleClient(int fd, Store& store, const CommandTable& table) {
             return;
         }
         buf.append(chunk, n);
+
+        // assume client is sending RESP
+        if (buf[0] == '*') {
+            while (!buf.empty()) {
+                ParseResult res = parseResp(buf);
+                switch (res.status) {
+                    case ParseStatus::Complete: {
+                        auto reply = handleArgs(store, table, res.args);
+                        if (reply) {
+                            if (!sendAll(fd, toResp(*reply))) {
+                                return;
+                            }
+                        }
+                        buf.erase(0, res.consumed);
+                        break;
+                    }
+                    case ParseStatus::Invalid: {
+                        sendAll(fd, toResp(Reply::error("ERR Protocol error: invalid RESP")));
+                        return;
+                    }
+                    case ParseStatus::Incomplete:
+                        goto retry;
+                }
+            }
+        retry:
+            continue;
+        }
 
         std::size_t i;
         while ((i = buf.find('\n')) != buf.npos) {

@@ -25,14 +25,7 @@ static std::string toUpper(std::string s) {
     return s;
 }
 
-std::optional<Reply> handleLine(Store& store, const CommandTable& commands, const std::string& line) {
-    Args args;
-    try {
-        args = tokenize(line);
-    } catch (const std::invalid_argument&) {
-        return Reply::error("ERR Protocol error: unbalanced quotes in request");
-    }
-
+std::optional<Reply> handleArgs(Store& store, const CommandTable& commands, const Args& args) {
     if (args.empty()) {
         return std::nullopt;
     }
@@ -41,6 +34,16 @@ std::optional<Reply> handleLine(Store& store, const CommandTable& commands, cons
         return Reply::error("ERR unknown command '" + args[0] + "'");
     }
     return it->second->execute(store, args);
+}
+
+std::optional<Reply> handleLine(Store& store, const CommandTable& commands, const std::string& line) {
+    Args args;
+    try {
+        args = tokenize(line);
+    } catch (const std::invalid_argument&) {
+        return Reply::error("ERR Protocol error: unbalanced quotes in request");
+    }
+    return handleArgs(store, commands, args);
 }
 
 CommandTable makeCommands() {

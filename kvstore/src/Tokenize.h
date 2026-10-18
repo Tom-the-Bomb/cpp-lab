@@ -1,11 +1,26 @@
 #pragma once
 #include <charconv>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
 
 using Args = std::vector<std::string>;
+
+enum class ParseStatus {
+    Complete,
+    Incomplete,
+    Invalid,
+};
+
+struct ParseResult {
+    ParseStatus status;
+    Args args = {};
+    std::size_t consumed = 0;
+};
+
+ParseResult parseResp(const std::string& buf);
 
 // stoll() but according to Redis behavior
 template <typename T> std::optional<T> parseInt(const std::string& s) {
