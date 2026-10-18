@@ -39,12 +39,14 @@ kvstore [-h | --help] [--server] [--maxkeys <count>] [--aof <path>] [--aof-resiz
 ## Commands
 
 ```
+PING [message]                  PONG, or <message>
+ECHO <message>                  <message>
 GET <key>                       value or (nil)
 SET <key> <value>               OK, clears TTL
 SETNX <key> <value>             1 if set, 0 if key exists
 DEL <key>...                    number of keys removed
 EXISTS <key>...                 number of keys that exist
-COUNT                           number of keys
+DBSIZE                          number of keys
 EXPIRE <key> <seconds>          1 if TTL set, 0 if no key (<= 0 expires now)
 EXPIREAT <key> <unix-seconds>   1 if TTL set, 0 if no key (past expires now)
 TTL <key>                       seconds left, -1 no TTL, -2 no key

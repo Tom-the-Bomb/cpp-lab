@@ -83,7 +83,18 @@ static Reply exists(Store& store, const Args& args) {
     return Reply::integer(cnt);
 }
 
-static Reply count(Store& store, const Args&) {
+static Reply ping(Store&, const Args& args) {
+    if (args.size() == 2) {
+        return Reply::bulk(args[1]);
+    }
+    return Reply::simple("PONG");
+}
+
+static Reply echo(Store&, const Args& args) {
+    return Reply::bulk(args[1]);
+}
+
+static Reply dbSize(Store& store, const Args&) {
     return Reply::integer(store.size());
 }
 
@@ -143,12 +154,14 @@ static Reply rewriteAof(Store& store, const Args&) {
 
 CommandTable makeCommands() {
     return {
+        {"PING", {ping, 1, 2, "PING [message]"}},
+        {"ECHO", {echo, 2, 2, "ECHO <message>"}},
         {"GET", {get, 2, 2, "GET <key>"}},
         {"SET", {set, 3, 3, "SET <key> <value>"}},
         {"SETNX", {setNX, 3, 3, "SETNX <key> <value>"}},
         {"DEL", {del, 2, variadic, "DEL <...keys>"}},
         {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>"}},
-        {"COUNT", {count, 1, 1, "COUNT"}},
+        {"DBSIZE", {dbSize, 1, 1, "DBSIZE"}},
         {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>"}},
         {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>"}},
         {"TTL", {ttl, 2, 2, "TTL <key>"}},
