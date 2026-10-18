@@ -142,6 +142,10 @@ static Reply decrBy(Store& store, const Args& args) {
     return incrReply(store, args[1], -*delta);
 }
 
+static Reply append(Store& store, const Args& args) {
+    return Reply::integer(store.append(args[1], args[2]));
+}
+
 static Reply del(Store& store, const Args& args) {
     int cnt = 0;
     for (std::size_t i = 1; i < args.size(); i++) {
@@ -176,6 +180,11 @@ static Reply keys(Store& store, const Args& args) {
         out.push_back(Reply::bulk(std::move(pre)));
     }
     return Reply::array(std::move(out));
+}
+
+static Reply flushAll(Store& store, const Args&) {
+    store.clear();
+    return Reply::ok();
 }
 
 static Reply expire(Store& store, const Args& args) {
@@ -230,10 +239,12 @@ CommandTable makeCommands() {
         {"INCRBY", {incrBy, 3, 3, "INCRBY <key> <delta>"}},
         {"DECR", {decr, 2, 2, "DECR <key>"}},
         {"DECRBY", {decrBy, 3, 3, "DECRBY <key> <delta>"}},
+        {"APPEND", {append, 3, 3, "APPEND <key> <value>"}},
         {"DEL", {del, 2, variadic, "DEL <...keys>"}},
         {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>"}},
         {"DBSIZE", {dbSize, 1, 1, "DBSIZE"}},
         {"KEYS", {keys, 2, 2, "KEYS <prefix>"}},
+        {"FLUSHALL", {flushAll, 1, 1, "FLUSHALL"}},
         {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>"}},
         {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>"}},
         {"TTL", {ttl, 2, 2, "TTL <key>"}},

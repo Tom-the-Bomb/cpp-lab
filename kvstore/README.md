@@ -42,21 +42,26 @@ kvstore [-h | --help] [--server] [--maxkeys <count>] [--aof <path>] [--aof-resiz
 PING [message]                  PONG, or <message>
 ECHO <message>                  <message>
 GET <key>                       value, or (nil)
+MGET <key>...                   value or (nil) for each key
+STRLEN <key>                    length of value, 0 if no key
 SET <key> <value>               OK, clears TTL
+MSET <key> <value> ...          OK, sets all pairs at once
 SETNX <key> <value>             1 if set, 0 if key exists
 INCR <key>                      increments by 1
 INCRBY <key> <delta>            increments by <delta>
 DECR <key>                      decrements by 1
 DECRBY <key> <delta>            decrements by <delta>
+APPEND <key> <value>            new length, keeps TTL
 DEL <key>...                    number of keys removed
 EXISTS <key>...                 number of keys that exist
 DBSIZE                          number of keys
+KEYS <prefix>*                  keys starting with <prefix>, sorted
+KEYS <key>                      <key> if it exists
+FLUSHALL                        OK, deletes every key
 EXPIRE <key> <seconds>          1 if TTL set, 0 if no key (<= 0 expires now)
 EXPIREAT <key> <unix-seconds>   1 if TTL set, 0 if no key (past expires now)
 TTL <key>                       seconds left, -1 no TTL, -2 no key
 PERSIST <key>                   1 if TTL removed, 0 otherwise
-KEYS <prefix>*                  keys starting with <prefix>, sorted
-KEYS <key>                      <key> if it exists
 REWRITEAOF                      compact the AOF, 1 on success
 ```
 

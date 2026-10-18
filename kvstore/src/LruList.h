@@ -11,13 +11,18 @@ public:
     };
 
     LruList() {
-        head_.next = &tail_;
-        tail_.prev = &head_;
+        clear();
     }
 
     // block copy constructor, assignment
     LruList(const LruList&) = delete;
     LruList& operator=(const LruList&) = delete;
+
+    // LruList doesn't own nodes, simply unlink real nodes and their owners will free them
+    void clear() {
+        head_.next = &tail_;
+        tail_.prev = &head_;
+    }
 
     void pushFront(Node* n) {
         n->prev = &head_;

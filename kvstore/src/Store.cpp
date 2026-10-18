@@ -148,6 +148,20 @@ IncrResponse Store::incrBy(const std::string& key, long long delta) {
     };
 }
 
+std::size_t Store::append(const std::string& key, const std::string& value) {
+    std::lock_guard<std::mutex> lock(mu_);
+    Entry* v = findLive(key, Clock::now());
+    if (!v) {
+        removeEntry(key);
+        insertNew(key, value);
+        return value.size();
+    }
+    v->value += value;
+    lru_.moveToFront(v->node.get());
+    logRecord("APPEND", {key, value});
+    return v->value.size();
+}
+
 bool Store::del(const std::string& key) {
     std::lock_guard<std::mutex> lock(mu_);
     return removeEntry(key);
@@ -171,6 +185,15 @@ std::vector<std::string> Store::keysWithPrefix(const std::string& prefix) const 
         return findLive(key, now) == nullptr;
     });
     return keys;
+}
+
+void Store::clear() {
+    std::lock_guard<std::mutex> lock(mu_);
+    lru_.clear();
+    trie_.clear();
+    heap_.clear();
+    data_.clear();
+    logRecord("FLUSHALL", {});
 }
 
 bool Store::expire(const std::string& key, std::chrono::seconds s) {

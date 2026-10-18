@@ -49,11 +49,13 @@ public:
     void mset(std::span<const std::string> pairs);
     bool setIfAbsent(const std::string& key, std::string value);
     IncrResponse incrBy(const std::string& key, long long delta);
+    std::size_t append(const std::string& key, const std::string& value);
 
     bool del(const std::string& key);
     bool exists(const std::string& key) const;
     std::size_t size() const;
     std::vector<std::string> keysWithPrefix(const std::string& prefix) const;
+    void clear();
 
     bool expire(const std::string& key, std::chrono::seconds s);
     long long ttl(const std::string& key) const;

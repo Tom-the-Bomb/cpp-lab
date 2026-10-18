@@ -180,6 +180,10 @@ public:
         return false;
     }
 
+    void clear() {
+        *this = HashMap();
+    }
+
     // const find, good for const HashMap declarations
     const V* find(const K& key) const {
         if (capacity_ == 0) {

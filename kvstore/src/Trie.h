@@ -23,6 +23,13 @@ public:
         eraseRec(&root_, key, 0);
     }
 
+    void clear() {
+        // children's values are unique ptrs that will free themselves
+        root_.children.clear();
+        root_.isEnd = false;
+        // root_ is "" which remains valid (no need to delete)
+    }
+
     bool contains(const std::string& key) const {
         const Node* node = findNode(key);
         return node && node->isEnd;

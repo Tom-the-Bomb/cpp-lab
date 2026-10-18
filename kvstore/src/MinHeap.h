@@ -28,6 +28,11 @@ public:
         }
     }
 
+    // assign a fresh vector so the old buffer is freed (clear() keeps capacity)
+    void clear() {
+        data_ = {};
+    }
+
     const T& top() const {
         if (empty()) {
             throw std::out_of_range("Heap is empty");
