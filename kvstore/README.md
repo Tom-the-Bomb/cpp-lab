@@ -24,16 +24,20 @@ A Redis-style in-memory key-value store
 Build first (see [root README](../README.md))
 
 ```
-kvstore [-h | --help] [--server] [--maxkeys <count>] [--aof <path>] [--aof-resize <factor>]
+kvstore [-h | --help] [--server] [--maxkeys <count>]
+        [--aof <path>] [--aof-resize <factor>]
 
   (no flags)              REPL on stdin
   -h, --help              this message
   --server                TCP server on 127.0.0.1:6380
-                          RESP clients (redis-cli -p 6380) receive RESP replies,
-                          inline clients (nc 127.0.0.1 6380) receive plain text
-  --maxkeys <count>       evict least recently used key when over <count> keys (0 = off)
-  --aof <path>            persistent storage across sessions by logging writes to <path> and replaying them on startup
-  --aof-resize <factor>   rewrite the AOF once it is at least 64kB and <factor> times its last size (0 = off)
+                          RESP clients (redis-cli -p 6380) receive RESP,
+                          inline clients (nc 127.0.0.1 6380) receive text
+  --maxkeys <count>       evict least recently used key when over <count>
+                          keys (0 = off)
+  --aof <path>            persistent storage across sessions by logging
+                          writes to <path> and replaying them on startup
+  --aof-resize <factor>   rewrite the AOF once it is at least 64kB and
+                          <factor> times its last size (0 = off)
 ```
 
 ## Commands

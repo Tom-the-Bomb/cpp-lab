@@ -7,9 +7,14 @@ A collection of C++ mini projects
 Requires CMake 3.20+ and a C++20 compiler
 
 ```sh
-cmake -S . -B build && cmake --build build                                # ASan + UBSan (default)
-cmake -S . -B build-tsan -DSANITIZERS=thread && cmake --build build-tsan  # TSan
-cmake -S . -B build-plain -DSANITIZERS= && cmake --build build-plain      # no sanitizers
+# ASan + UBSan (default)
+cmake -S . -B build && cmake --build build
+
+# TSan
+cmake -S . -B build-tsan -DSANITIZERS=thread && cmake --build build-tsan
+
+# no sanitizers
+cmake -S . -B build-plain -DSANITIZERS= && cmake --build build-plain
 ```
 
 - Executables: `<build folder>/<project>/<executable>`
