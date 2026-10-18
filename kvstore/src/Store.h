@@ -18,6 +18,17 @@
 #include "MinHeap.h"
 #include "Trie.h"
 
+enum class IncrStatus {
+    Ok,
+    NotInteger,
+    Overflow,
+};
+
+struct IncrResponse {
+    IncrStatus status;
+    long long n = 0;
+};
+
 class Store {
 public:
     using Clock = std::chrono::steady_clock;
@@ -33,6 +44,7 @@ public:
     // lock `mu_` themselves
     void set(const std::string& key, std::string value);
     bool setIfAbsent(const std::string& key, std::string value);
+    IncrResponse incrBy(const std::string& key, long long delta);
     std::optional<std::string> get(const std::string& key);
     bool del(const std::string& key);
     bool exists(const std::string& key) const;

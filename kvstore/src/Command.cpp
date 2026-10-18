@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <climits>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -65,6 +66,41 @@ static Reply set(Store& store, const Args& args) {
 
 static Reply setNX(Store& store, const Args& args) {
     return Reply::integer(store.setIfAbsent(args[1], args[2]));
+}
+
+static Reply incrReply(Store& store, const std::string& key, long long delta) {
+    IncrResponse r = store.incrBy(key, delta);
+    switch (r.status) {
+        case IncrStatus::Ok:
+            return Reply::integer(r.n);
+        case IncrStatus::NotInteger:
+            return Reply::error("ERR value is not an integer or out of range");
+        case IncrStatus::Overflow:
+            return Reply::error("ERR increment or decrement would overflow");
+    }
+}
+
+static Reply incr(Store& store, const Args& args) {
+    return incrReply(store, args[1], 1);
+}
+
+static Reply incrBy(Store& store, const Args& args) {
+    if (auto delta = parseInt<long long>(args[2])) {
+        return incrReply(store, args[1], *delta);
+    }
+    return Reply::error("ERR value is not an integer or out of range");
+}
+
+static Reply decr(Store& store, const Args& args) {
+    return incrReply(store, args[1], -1);
+}
+
+static Reply decrBy(Store& store, const Args& args) {
+    auto delta = parseInt<long long>(args[2]);
+    if (!delta || *delta == LLONG_MIN) {
+        return Reply::error("ERR value is not an integer or out of range");
+    }
+    return incrReply(store, args[1], -*delta);
 }
 
 static Reply del(Store& store, const Args& args) {
@@ -159,6 +195,10 @@ CommandTable makeCommands() {
         {"GET", {get, 2, 2, "GET <key>"}},
         {"SET", {set, 3, 3, "SET <key> <value>"}},
         {"SETNX", {setNX, 3, 3, "SETNX <key> <value>"}},
+        {"INCR", {incr, 2, 2, "INCR <key>"}},
+        {"INCRBY", {incrBy, 3, 3, "INCRBY <key> <delta>"}},
+        {"DECR", {decr, 2, 2, "DECR <key>"}},
+        {"DECRBY", {decrBy, 3, 3, "DECRBY <key> <delta>"}},
         {"DEL", {del, 2, variadic, "DEL <...keys>"}},
         {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>"}},
         {"DBSIZE", {dbSize, 1, 1, "DBSIZE"}},

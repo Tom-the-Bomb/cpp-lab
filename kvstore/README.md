@@ -41,9 +41,13 @@ kvstore [-h | --help] [--server] [--maxkeys <count>] [--aof <path>] [--aof-resiz
 ```
 PING [message]                  PONG, or <message>
 ECHO <message>                  <message>
-GET <key>                       value or (nil)
+GET <key>                       value, or (nil)
 SET <key> <value>               OK, clears TTL
 SETNX <key> <value>             1 if set, 0 if key exists
+INCR <key>                      increments by 1
+INCRBY <key> <delta>            increments by <delta>
+DECR <key>                      decrements by 1
+DECRBY <key> <delta>            decrements by <delta>
 DEL <key>...                    number of keys removed
 EXISTS <key>...                 number of keys that exist
 DBSIZE                          number of keys

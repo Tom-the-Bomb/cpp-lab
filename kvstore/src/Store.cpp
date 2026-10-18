@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <chrono>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -34,6 +35,15 @@ constexpr std::chrono::duration rewriteRetryAfter = std::chrono::seconds(60);
 
 static long long ttlToTime(Store::Clock::duration s) {
     return std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now() + s).time_since_epoch().count();
+}
+
+static bool overflowsLL(long long n, long long delta) {
+    if (delta > 0) {
+        return n > LLONG_MAX - delta;
+    } else if (delta < 0) {
+        return n < LLONG_MIN - delta;
+    }
+    return false;
 }
 
 Store::Store(std::size_t maxKeys, std::string aofPath, std::uintmax_t aofGrowth):
@@ -182,6 +192,33 @@ bool Store::setIfAbsent(const std::string& key, std::string value) {
     removeEntry(key);
     insertNew(key, std::move(value));
     return true;
+}
+
+IncrResponse Store::incrBy(const std::string& key, long long delta) {
+    std::lock_guard<std::mutex> lock(mu_);
+    Entry* v = findLive(key, Clock::now());
+    long long res;
+    if (!v) {
+        removeEntry(key);
+        insertNew(key, std::to_string(delta));
+        res = delta;
+    } else {
+        auto n = parseInt<long long>(v->value);
+        if (!n) {
+            return IncrResponse {IncrStatus::NotInteger};
+        }
+        if (overflowsLL(*n, delta)) {
+            return IncrResponse {IncrStatus::Overflow};
+        }
+        res = *n + delta;
+        v->value = std::to_string(res);
+        lru_.moveToFront(v->node.get());
+        logRecord("INCRBY", {key, std::to_string(delta)});
+    }
+    return IncrResponse {
+        IncrStatus::Ok,
+        res,
+    };
 }
 
 std::optional<std::string> Store::get(const std::string& key) {
