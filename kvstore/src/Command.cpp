@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <limits>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -61,6 +62,14 @@ static Reply get(Store& store, const Args& args) {
 
 static Reply set(Store& store, const Args& args) {
     store.set(args[1], args[2]);
+    return Reply::ok();
+}
+
+static Reply mset(Store& store, const Args& args) {
+    if (args.size() % 2 == 0) {
+        return Reply::error("ERR usage: MSET <key> <value> [<key> <value>...]");
+    }
+    store.mset(std::span(args).subspan(1));
     return Reply::ok();
 }
 
@@ -134,6 +143,25 @@ static Reply dbSize(Store& store, const Args&) {
     return Reply::integer(store.size());
 }
 
+static Reply strLen(Store& store, const Args& args) {
+    return Reply::integer(get(store, args).str.size());
+}
+
+static Reply mget(Store& store, const Args& args) {
+    std::vector<Reply> out;
+    out.reserve(args.size() - 1);
+
+    auto r = store.mget(std::span(args).subspan(1));
+    for (auto& el : r) {
+        if (el) {
+            out.push_back(Reply::bulk(std::move(*el)));
+        } else {
+            out.push_back(Reply::nil());
+        }
+    }
+    return Reply::array(std::move(out));
+}
+
 static Reply expire(Store& store, const Args& args) {
     std::optional<long long> secs = parseInt<long long>(args[2]);
     if (!secs) {
@@ -202,6 +230,9 @@ CommandTable makeCommands() {
         {"DEL", {del, 2, variadic, "DEL <...keys>"}},
         {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>"}},
         {"DBSIZE", {dbSize, 1, 1, "DBSIZE"}},
+        {"STRLEN", {strLen, 2, 2, "STRLEN <key>"}},
+        {"MGET", {mget, 2, variadic, "MGET <...keys>"}},
+        {"MSET", {mset, 3, variadic, "MSET <key> <value> [<key> <value>...]"}},
         {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>"}},
         {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>"}},
         {"TTL", {ttl, 2, 2, "TTL <key>"}},

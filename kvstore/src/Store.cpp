@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -172,8 +173,7 @@ void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_
     }
 }
 
-void Store::set(const std::string& key, std::string value) {
-    std::lock_guard<std::mutex> lock(mu_);
+void Store::setLocked(const std::string& key, std::string value) {
     if (Entry* v = data_.find(key)) {
         v->value = std::move(value);
         v->expiresAt = std::nullopt;
@@ -182,6 +182,18 @@ void Store::set(const std::string& key, std::string value) {
         return;
     }
     insertNew(key, std::move(value));
+}
+
+void Store::set(const std::string& key, std::string value) {
+    std::lock_guard<std::mutex> lock(mu_);
+    setLocked(key, std::move(value));
+}
+
+void Store::mset(std::span<const std::string> pairs) {
+    std::lock_guard<std::mutex> lock(mu_);
+    for (std::size_t i = 0; i + 1 < pairs.size(); i += 2) {
+        setLocked(pairs[i], pairs[i + 1]);
+    }
 }
 
 bool Store::setIfAbsent(const std::string& key, std::string value) {
@@ -244,6 +256,21 @@ bool Store::exists(const std::string& key) const {
 std::size_t Store::size() const {
     std::lock_guard<std::mutex> lock(mu_);
     return data_.size();
+}
+
+std::vector<std::optional<std::string>> Store::mget(std::span<const std::string> keys) {
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<std::optional<std::string>> out;
+    TimePoint now = Clock::now();
+    for (const std::string& key : keys) {
+        if (Entry* v = findLive(key, now)) {
+            out.push_back(v->value);
+            lru_.moveToFront(v->node.get());
+        } else {
+            out.push_back(std::nullopt);
+        }
+    }
+    return out;
 }
 
 bool Store::expire(const std::string& key, std::chrono::seconds s) {
