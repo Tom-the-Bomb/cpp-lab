@@ -19,6 +19,15 @@
 
 constexpr long long maxSecs = 100LL * 365 * 24 * 60 * 60; // 100 years
 constexpr std::size_t variadic = std::numeric_limits<std::size_t>::max();
+constexpr std::size_t maxKeySize = 256;
+
+static bool keyTooLong(const std::string& key) {
+    return key.size() > maxKeySize;
+}
+
+static Reply keyTooLongError() {
+    return Reply::error("ERR key too long (max " + std::to_string(maxKeySize) + " bytes)");
+}
 
 static std::string toUpper(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
@@ -91,6 +100,9 @@ static Reply strLen(Store& store, const Args& args) {
 }
 
 static Reply set(Store& store, const Args& args) {
+    if (keyTooLong(args[1])) {
+        return keyTooLongError();
+    }
     store.set(args[1], args[2]);
     return Reply::ok();
 }
@@ -99,15 +111,26 @@ static Reply mset(Store& store, const Args& args) {
     if (args.size() % 2 == 0) {
         return Reply::error("ERR usage: MSET <key> <value> [<key> <value>...]");
     }
+    for (std::size_t i = 1; i < args.size(); i += 2) {
+        if (keyTooLong(args[i])) {
+            return keyTooLongError();
+        }
+    }
     store.mset(std::span(args).subspan(1));
     return Reply::ok();
 }
 
 static Reply setNX(Store& store, const Args& args) {
+    if (keyTooLong(args[1])) {
+        return keyTooLongError();
+    }
     return Reply::integer(store.setIfAbsent(args[1], args[2]));
 }
 
 static Reply incrReply(Store& store, const std::string& key, long long delta) {
+    if (keyTooLong(key)) {
+        return keyTooLongError();
+    }
     IncrResponse r = store.incrBy(key, delta);
     switch (r.status) {
         case IncrStatus::Ok:
@@ -143,6 +166,9 @@ static Reply decrBy(Store& store, const Args& args) {
 }
 
 static Reply append(Store& store, const Args& args) {
+    if (keyTooLong(args[1])) {
+        return keyTooLongError();
+    }
     return Reply::integer(store.append(args[1], args[2]));
 }
 
