@@ -47,6 +47,15 @@ static bool overflowsLL(long long n, long long delta) {
     return false;
 }
 
+static std::string formatRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
+    std::string text = cmd;
+    for (std::string_view arg : args) {
+        text += " ";
+        text += quote(std::string(arg));
+    }
+    return text;
+}
+
 Store::Store(std::size_t maxKeys, std::string aofPath, std::uintmax_t aofGrowth):
     maxKeys_(maxKeys), aofPath_(std::move(aofPath)), aofGrowth_(aofGrowth), sweeper_([this] {
         while (running_) {
@@ -63,6 +72,232 @@ Store::Store(std::size_t maxKeys, std::string aofPath, std::uintmax_t aofGrowth)
 Store::~Store() {
     running_ = false;
     sweeper_.join();
+}
+
+std::optional<std::string> Store::get(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mu_);
+    const Entry* v = findLive(key, Clock::now());
+    if (!v) {
+        return std::nullopt;
+    }
+    lru_.moveToFront(v->node.get());
+    return v->value;
+}
+
+std::vector<std::optional<std::string>> Store::mget(std::span<const std::string> keys) {
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<std::optional<std::string>> out;
+    TimePoint now = Clock::now();
+    for (const std::string& key : keys) {
+        if (Entry* v = findLive(key, now)) {
+            out.push_back(v->value);
+            lru_.moveToFront(v->node.get());
+        } else {
+            out.push_back(std::nullopt);
+        }
+    }
+    return out;
+}
+
+void Store::set(const std::string& key, std::string value) {
+    std::lock_guard<std::mutex> lock(mu_);
+    setLocked(key, std::move(value));
+}
+
+void Store::mset(std::span<const std::string> pairs) {
+    std::lock_guard<std::mutex> lock(mu_);
+    for (std::size_t i = 0; i + 1 < pairs.size(); i += 2) {
+        setLocked(pairs[i], pairs[i + 1]);
+    }
+}
+
+bool Store::setIfAbsent(const std::string& key, std::string value) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (findLive(key, Clock::now())) {
+        return false;
+    }
+    removeEntry(key);
+    insertNew(key, std::move(value));
+    return true;
+}
+
+IncrResponse Store::incrBy(const std::string& key, long long delta) {
+    std::lock_guard<std::mutex> lock(mu_);
+    Entry* v = findLive(key, Clock::now());
+    long long res;
+    if (!v) {
+        removeEntry(key);
+        insertNew(key, std::to_string(delta));
+        res = delta;
+    } else {
+        auto n = parseInt<long long>(v->value);
+        if (!n) {
+            return IncrResponse {IncrStatus::NotInteger};
+        }
+        if (overflowsLL(*n, delta)) {
+            return IncrResponse {IncrStatus::Overflow};
+        }
+        res = *n + delta;
+        v->value = std::to_string(res);
+        lru_.moveToFront(v->node.get());
+        logRecord("INCRBY", {key, std::to_string(delta)});
+    }
+    return IncrResponse {
+        IncrStatus::Ok,
+        res,
+    };
+}
+
+bool Store::del(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mu_);
+    return removeEntry(key);
+}
+
+bool Store::exists(const std::string& key) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return findLive(key, Clock::now()) != nullptr;
+}
+
+std::size_t Store::size() const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return data_.size();
+}
+
+std::vector<std::string> Store::keysWithPrefix(const std::string& prefix) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    std::vector<std::string> keys = trie_.collect(prefix);
+    TimePoint now = Clock::now();
+    std::erase_if(keys, [this, now](const std::string& key) {
+        return findLive(key, now) == nullptr;
+    });
+    return keys;
+}
+
+bool Store::expire(const std::string& key, std::chrono::seconds s) {
+    std::lock_guard<std::mutex> lock(mu_);
+    TimePoint now = Clock::now();
+    Entry* v = findLive(key, now);
+    if (!v) {
+        return false;
+    }
+    TimePoint exp = now + s;
+    v->expiresAt = exp;
+    heap_.push(Expiry {key, exp});
+
+    logRecord("EXPIREAT", {key, std::to_string(ttlToTime(s))});
+    return true;
+}
+
+long long Store::ttl(const std::string& key) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    TimePoint now = Clock::now();
+    const Entry* v = findLive(key, now);
+    if (!v) {
+        return -2;
+    }
+    if (!v->expiresAt) {
+        return -1;
+    }
+    return std::chrono::round<std::chrono::seconds>(*v->expiresAt - now).count();
+}
+
+bool Store::persist(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mu_);
+    Entry* v = findLive(key, Clock::now());
+    if (!v || !v->expiresAt) {
+        return false;
+    }
+    v->expiresAt = std::nullopt;
+    logRecord("PERSIST", {key});
+    return true;
+}
+
+void Store::beginLoading() {
+    std::lock_guard<std::mutex> lock(mu_);
+    loading_ = true;
+}
+
+bool Store::openAof() {
+    std::lock_guard<std::mutex> lock(mu_);
+    loading_ = false;
+    aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644));
+    std::error_code ec;
+    std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
+    if (!ec) {
+        prevAofSize_ = size;
+    }
+    return aof_.isOpen();
+}
+
+bool Store::rewriteAof(bool force) {
+    if (aofPath_.empty()) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mu_);
+
+    std::error_code ec;
+    TimePoint now = Clock::now();
+    if (!force) {
+        if (now < autoRewriteRetryAt_ || !aof_.isOpen() || !aofGrowth_) {
+            return false;
+        }
+        std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
+        if (ec || size < minResizeAofSize || size < aofGrowth_ * prevAofSize_) {
+            return false;
+        }
+    }
+
+    std::string tmpPath = aofPath_ + ".tmp";
+    Fd tmp(open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644));
+
+    auto fail = [&](const char* step, const std::string& reason) {
+        std::cerr << "aof rewrite: " << step << ": " << reason << std::endl;
+        tmp.close();
+        std::error_code ignored;
+        std::filesystem::remove(tmpPath, ignored);
+        if (!force) {
+            autoRewriteRetryAt_ = now + rewriteRetryAfter;
+        }
+        return false;
+    };
+
+    if (!tmp.isOpen()) {
+        return fail("open", std::strerror(errno));
+    }
+
+    std::uintmax_t newSize = 0;
+    for (const auto& [k, v] : data_) {
+        if (isExpired(v, now)) {
+            continue;
+        }
+        std::string text = formatRecord("SET", {k, v.value}) + "\n";
+        if (v.expiresAt) {
+            text += formatRecord("EXPIREAT", {k, std::to_string(ttlToTime(*v.expiresAt - now))}) + "\n";
+        }
+        if (!sendAll(tmp.fd(), text)) {
+            return fail("write", std::strerror(errno));
+        }
+        newSize += text.size();
+    }
+    if (!syncFd(tmp.fd())) {
+        return fail("fsync", std::strerror(errno));
+    }
+    if (!tmp.close()) {
+        return fail("close", std::strerror(errno));
+    }
+
+    aof_.close();
+    std::filesystem::rename(tmpPath, aofPath_, ec);
+    aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_APPEND, 0644));
+    if (!aof_.isOpen()) {
+        perror("aof reopen");
+    }
+    if (ec) {
+        return fail("rename", ec.message());
+    }
+    prevAofSize_ = newSize;
+    autoRewriteRetryAt_ = {};
+    return aof_.isOpen();
 }
 
 // returns `true` if sweep finished only due to `maxWorkPerSweep`
@@ -148,13 +383,15 @@ bool Store::removeEntry(const std::string& key) {
     return exists;
 }
 
-static std::string formatRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
-    std::string text = cmd;
-    for (std::string_view arg : args) {
-        text += " ";
-        text += quote(std::string(arg));
+void Store::setLocked(const std::string& key, std::string value) {
+    if (Entry* v = data_.find(key)) {
+        v->value = std::move(value);
+        v->expiresAt = std::nullopt;
+        lru_.moveToFront(v->node.get());
+        logRecord("SET", {key, v->value});
+        return;
     }
-    return text;
+    insertNew(key, std::move(value));
 }
 
 void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_view> args) {
@@ -171,241 +408,4 @@ void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_
             perror("aof truncate");
         }
     }
-}
-
-void Store::setLocked(const std::string& key, std::string value) {
-    if (Entry* v = data_.find(key)) {
-        v->value = std::move(value);
-        v->expiresAt = std::nullopt;
-        lru_.moveToFront(v->node.get());
-        logRecord("SET", {key, v->value});
-        return;
-    }
-    insertNew(key, std::move(value));
-}
-
-void Store::set(const std::string& key, std::string value) {
-    std::lock_guard<std::mutex> lock(mu_);
-    setLocked(key, std::move(value));
-}
-
-void Store::mset(std::span<const std::string> pairs) {
-    std::lock_guard<std::mutex> lock(mu_);
-    for (std::size_t i = 0; i + 1 < pairs.size(); i += 2) {
-        setLocked(pairs[i], pairs[i + 1]);
-    }
-}
-
-bool Store::setIfAbsent(const std::string& key, std::string value) {
-    std::lock_guard<std::mutex> lock(mu_);
-    if (findLive(key, Clock::now())) {
-        return false;
-    }
-    removeEntry(key);
-    insertNew(key, std::move(value));
-    return true;
-}
-
-IncrResponse Store::incrBy(const std::string& key, long long delta) {
-    std::lock_guard<std::mutex> lock(mu_);
-    Entry* v = findLive(key, Clock::now());
-    long long res;
-    if (!v) {
-        removeEntry(key);
-        insertNew(key, std::to_string(delta));
-        res = delta;
-    } else {
-        auto n = parseInt<long long>(v->value);
-        if (!n) {
-            return IncrResponse {IncrStatus::NotInteger};
-        }
-        if (overflowsLL(*n, delta)) {
-            return IncrResponse {IncrStatus::Overflow};
-        }
-        res = *n + delta;
-        v->value = std::to_string(res);
-        lru_.moveToFront(v->node.get());
-        logRecord("INCRBY", {key, std::to_string(delta)});
-    }
-    return IncrResponse {
-        IncrStatus::Ok,
-        res,
-    };
-}
-
-std::optional<std::string> Store::get(const std::string& key) {
-    std::lock_guard<std::mutex> lock(mu_);
-    const Entry* v = findLive(key, Clock::now());
-    if (!v) {
-        return std::nullopt;
-    }
-    lru_.moveToFront(v->node.get());
-    return v->value;
-}
-
-bool Store::del(const std::string& key) {
-    std::lock_guard<std::mutex> lock(mu_);
-    return removeEntry(key);
-}
-
-bool Store::exists(const std::string& key) const {
-    std::lock_guard<std::mutex> lock(mu_);
-    return findLive(key, Clock::now()) != nullptr;
-}
-
-std::size_t Store::size() const {
-    std::lock_guard<std::mutex> lock(mu_);
-    return data_.size();
-}
-
-std::vector<std::optional<std::string>> Store::mget(std::span<const std::string> keys) {
-    std::lock_guard<std::mutex> lock(mu_);
-    std::vector<std::optional<std::string>> out;
-    TimePoint now = Clock::now();
-    for (const std::string& key : keys) {
-        if (Entry* v = findLive(key, now)) {
-            out.push_back(v->value);
-            lru_.moveToFront(v->node.get());
-        } else {
-            out.push_back(std::nullopt);
-        }
-    }
-    return out;
-}
-
-bool Store::expire(const std::string& key, std::chrono::seconds s) {
-    std::lock_guard<std::mutex> lock(mu_);
-    TimePoint now = Clock::now();
-    Entry* v = findLive(key, now);
-    if (!v) {
-        return false;
-    }
-    TimePoint exp = now + s;
-    v->expiresAt = exp;
-    heap_.push(Expiry {key, exp});
-
-    logRecord("EXPIREAT", {key, std::to_string(ttlToTime(s))});
-    return true;
-}
-
-long long Store::ttl(const std::string& key) const {
-    std::lock_guard<std::mutex> lock(mu_);
-    TimePoint now = Clock::now();
-    const Entry* v = findLive(key, now);
-    if (!v) {
-        return -2;
-    }
-    if (!v->expiresAt) {
-        return -1;
-    }
-    return std::chrono::round<std::chrono::seconds>(*v->expiresAt - now).count();
-}
-
-bool Store::persist(const std::string& key) {
-    std::lock_guard<std::mutex> lock(mu_);
-    Entry* v = findLive(key, Clock::now());
-    if (!v || !v->expiresAt) {
-        return false;
-    }
-    v->expiresAt = std::nullopt;
-    logRecord("PERSIST", {key});
-    return true;
-}
-
-std::vector<std::string> Store::keysWithPrefix(const std::string& prefix) const {
-    std::lock_guard<std::mutex> lock(mu_);
-    std::vector<std::string> keys = trie_.collect(prefix);
-    TimePoint now = Clock::now();
-    std::erase_if(keys, [this, now](const std::string& key) {
-        return findLive(key, now) == nullptr;
-    });
-    return keys;
-}
-
-bool Store::openAof() {
-    std::lock_guard<std::mutex> lock(mu_);
-    loading_ = false;
-    aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644));
-    std::error_code ec;
-    std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
-    if (!ec) {
-        prevAofSize_ = size;
-    }
-    return aof_.isOpen();
-}
-
-void Store::beginLoading() {
-    std::lock_guard<std::mutex> lock(mu_);
-    loading_ = true;
-}
-
-bool Store::rewriteAof(bool force) {
-    if (aofPath_.empty()) {
-        return false;
-    }
-    std::lock_guard<std::mutex> lock(mu_);
-
-    std::error_code ec;
-    TimePoint now = Clock::now();
-    if (!force) {
-        if (now < autoRewriteRetryAt_ || !aof_.isOpen() || !aofGrowth_) {
-            return false;
-        }
-        std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
-        if (ec || size < minResizeAofSize || size < aofGrowth_ * prevAofSize_) {
-            return false;
-        }
-    }
-
-    std::string tmpPath = aofPath_ + ".tmp";
-    Fd tmp(open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644));
-
-    auto fail = [&](const char* step, const std::string& reason) {
-        std::cerr << "aof rewrite: " << step << ": " << reason << std::endl;
-        tmp.close();
-        std::error_code ignored;
-        std::filesystem::remove(tmpPath, ignored);
-        if (!force) {
-            autoRewriteRetryAt_ = now + rewriteRetryAfter;
-        }
-        return false;
-    };
-
-    if (!tmp.isOpen()) {
-        return fail("open", std::strerror(errno));
-    }
-
-    std::uintmax_t newSize = 0;
-    for (const auto& [k, v] : data_) {
-        if (isExpired(v, now)) {
-            continue;
-        }
-        std::string text = formatRecord("SET", {k, v.value}) + "\n";
-        if (v.expiresAt) {
-            text += formatRecord("EXPIREAT", {k, std::to_string(ttlToTime(*v.expiresAt - now))}) + "\n";
-        }
-        if (!sendAll(tmp.fd(), text)) {
-            return fail("write", std::strerror(errno));
-        }
-        newSize += text.size();
-    }
-    if (!syncFd(tmp.fd())) {
-        return fail("fsync", std::strerror(errno));
-    }
-    if (!tmp.close()) {
-        return fail("close", std::strerror(errno));
-    }
-
-    aof_.close();
-    std::filesystem::rename(tmpPath, aofPath_, ec);
-    aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_APPEND, 0644));
-    if (!aof_.isOpen()) {
-        perror("aof reopen");
-    }
-    if (ec) {
-        return fail("rename", ec.message());
-    }
-    prevAofSize_ = newSize;
-    autoRewriteRetryAt_ = {};
-    return aof_.isOpen();
 }

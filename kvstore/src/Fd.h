@@ -12,14 +12,6 @@ public:
         close();
     }
 
-    int fd() const {
-        return fd_;
-    }
-
-    bool isOpen() const {
-        return fd_ >= 0;
-    }
-
     // only 1 Fd can own file descriptor
     Fd(const Fd& other) = delete;
     Fd& operator=(const Fd& other) = delete;
@@ -36,6 +28,14 @@ public:
         fd_ = other.fd_;
         other.fd_ = -1;
         return *this;
+    }
+
+    int fd() const {
+        return fd_;
+    }
+
+    bool isOpen() const {
+        return fd_ >= 0;
     }
 
     bool close() {

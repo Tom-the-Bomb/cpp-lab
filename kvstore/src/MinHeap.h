@@ -7,6 +7,11 @@
 
 template <typename T, typename Less = std::less<T>> class MinHeap {
 public:
+    void push(T x) {
+        data_.push_back(std::move(x));
+        siftUp(data_.size() - 1);
+    }
+
     void pop() {
         if (empty()) {
             throw std::out_of_range("Heap is empty");
@@ -21,11 +26,6 @@ public:
         if (!data_.empty()) {
             siftDown(0);
         }
-    }
-
-    void push(T x) {
-        data_.push_back(std::move(x));
-        siftUp(data_.size() - 1);
     }
 
     const T& top() const {

@@ -8,20 +8,6 @@
 
 using Args = std::vector<std::string>;
 
-enum class ParseStatus {
-    Complete,
-    Incomplete,
-    Invalid,
-};
-
-struct ParseResult {
-    ParseStatus status;
-    Args args = {};
-    std::size_t consumed = 0;
-};
-
-ParseResult parseResp(const std::string& buf);
-
 // stoll() but according to Redis behavior
 template <typename T> std::optional<T> parseInt(const std::string& s) {
     T n;
@@ -40,3 +26,17 @@ template <typename T> std::optional<T> parseInt(const std::string& s) {
 Args tokenize(const std::string& line);
 
 std::string quote(const std::string& s);
+
+enum class ParseStatus {
+    Complete,
+    Incomplete,
+    Invalid,
+};
+
+struct ParseResult {
+    ParseStatus status;
+    Args args = {};
+    std::size_t consumed = 0;
+};
+
+ParseResult parseResp(const std::string& buf);

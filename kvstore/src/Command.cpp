@@ -52,12 +52,42 @@ std::optional<Reply> handleLine(Store& store, const CommandTable& commands, cons
     return handleArgs(store, commands, args);
 }
 
+static Reply ping(Store&, const Args& args) {
+    if (args.size() == 2) {
+        return Reply::bulk(args[1]);
+    }
+    return Reply::simple("PONG");
+}
+
+static Reply echo(Store&, const Args& args) {
+    return Reply::bulk(args[1]);
+}
+
 static Reply get(Store& store, const Args& args) {
     auto v = store.get(args[1]);
     if (!v) {
         return Reply::nil();
     }
     return Reply::bulk(std::move(*v));
+}
+
+static Reply mget(Store& store, const Args& args) {
+    std::vector<Reply> out;
+    out.reserve(args.size() - 1);
+
+    auto r = store.mget(std::span(args).subspan(1));
+    for (auto& el : r) {
+        if (el) {
+            out.push_back(Reply::bulk(std::move(*el)));
+        } else {
+            out.push_back(Reply::nil());
+        }
+    }
+    return Reply::array(std::move(out));
+}
+
+static Reply strLen(Store& store, const Args& args) {
+    return Reply::integer(get(store, args).str.size());
 }
 
 static Reply set(Store& store, const Args& args) {
@@ -128,36 +158,22 @@ static Reply exists(Store& store, const Args& args) {
     return Reply::integer(cnt);
 }
 
-static Reply ping(Store&, const Args& args) {
-    if (args.size() == 2) {
-        return Reply::bulk(args[1]);
-    }
-    return Reply::simple("PONG");
-}
-
-static Reply echo(Store&, const Args& args) {
-    return Reply::bulk(args[1]);
-}
-
 static Reply dbSize(Store& store, const Args&) {
     return Reply::integer(store.size());
 }
 
-static Reply strLen(Store& store, const Args& args) {
-    return Reply::integer(get(store, args).str.size());
-}
-
-static Reply mget(Store& store, const Args& args) {
+static Reply keys(Store& store, const Args& args) {
+    std::string pre = args[1];
     std::vector<Reply> out;
-    out.reserve(args.size() - 1);
 
-    auto r = store.mget(std::span(args).subspan(1));
-    for (auto& el : r) {
-        if (el) {
-            out.push_back(Reply::bulk(std::move(*el)));
-        } else {
-            out.push_back(Reply::nil());
+    if (pre.ends_with("*")) {
+        pre.pop_back();
+        std::vector<std::string> match = store.keysWithPrefix(pre);
+        for (std::string& k : match) {
+            out.push_back(Reply::bulk(std::move(k)));
         }
+    } else if (store.exists(pre)) {
+        out.push_back(Reply::bulk(std::move(pre)));
     }
     return Reply::array(std::move(out));
 }
@@ -196,22 +212,6 @@ static Reply persist(Store& store, const Args& args) {
     return Reply::integer(store.persist(args[1]));
 }
 
-static Reply keys(Store& store, const Args& args) {
-    std::string pre = args[1];
-    std::vector<Reply> out;
-
-    if (pre.ends_with("*")) {
-        pre.pop_back();
-        std::vector<std::string> match = store.keysWithPrefix(pre);
-        for (std::string& k : match) {
-            out.push_back(Reply::bulk(std::move(k)));
-        }
-    } else if (store.exists(pre)) {
-        out.push_back(Reply::bulk(std::move(pre)));
-    }
-    return Reply::array(std::move(out));
-}
-
 static Reply rewriteAof(Store& store, const Args&) {
     return Reply::integer(store.rewriteAof(true));
 }
@@ -221,7 +221,10 @@ CommandTable makeCommands() {
         {"PING", {ping, 1, 2, "PING [message]"}},
         {"ECHO", {echo, 2, 2, "ECHO <message>"}},
         {"GET", {get, 2, 2, "GET <key>"}},
+        {"MGET", {mget, 2, variadic, "MGET <...keys>"}},
+        {"STRLEN", {strLen, 2, 2, "STRLEN <key>"}},
         {"SET", {set, 3, 3, "SET <key> <value>"}},
+        {"MSET", {mset, 3, variadic, "MSET <key> <value> [<key> <value>...]"}},
         {"SETNX", {setNX, 3, 3, "SETNX <key> <value>"}},
         {"INCR", {incr, 2, 2, "INCR <key>"}},
         {"INCRBY", {incrBy, 3, 3, "INCRBY <key> <delta>"}},
@@ -230,14 +233,11 @@ CommandTable makeCommands() {
         {"DEL", {del, 2, variadic, "DEL <...keys>"}},
         {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>"}},
         {"DBSIZE", {dbSize, 1, 1, "DBSIZE"}},
-        {"STRLEN", {strLen, 2, 2, "STRLEN <key>"}},
-        {"MGET", {mget, 2, variadic, "MGET <...keys>"}},
-        {"MSET", {mset, 3, variadic, "MSET <key> <value> [<key> <value>...]"}},
+        {"KEYS", {keys, 2, 2, "KEYS <prefix>"}},
         {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>"}},
         {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>"}},
         {"TTL", {ttl, 2, 2, "TTL <key>"}},
         {"PERSIST", {persist, 2, 2, "PERSIST <key>"}},
-        {"KEYS", {keys, 2, 2, "KEYS <prefix>"}},
         {"REWRITEAOF", {rewriteAof, 1, 1, "REWRITEAOF"}},
     };
 }

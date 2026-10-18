@@ -43,21 +43,24 @@ public:
     Store& operator=(const Store&) = delete;
 
     // lock `mu_` themselves
+    std::optional<std::string> get(const std::string& key);
+    std::vector<std::optional<std::string>> mget(std::span<const std::string> keys);
     void set(const std::string& key, std::string value);
+    void mset(std::span<const std::string> pairs);
     bool setIfAbsent(const std::string& key, std::string value);
     IncrResponse incrBy(const std::string& key, long long delta);
-    std::optional<std::string> get(const std::string& key);
+
     bool del(const std::string& key);
     bool exists(const std::string& key) const;
     std::size_t size() const;
-    std::vector<std::optional<std::string>> mget(std::span<const std::string> keys);
-    void mset(std::span<const std::string> pairs);
+    std::vector<std::string> keysWithPrefix(const std::string& prefix) const;
+
     bool expire(const std::string& key, std::chrono::seconds s);
     long long ttl(const std::string& key) const;
     bool persist(const std::string& key);
-    std::vector<std::string> keysWithPrefix(const std::string& prefix) const;
-    bool openAof();
+
     void beginLoading();
+    bool openAof();
     bool rewriteAof(bool force);
 private:
     struct Entry {
@@ -101,8 +104,8 @@ private:
     static bool isExpired(const Entry& v, TimePoint now);
     const Entry* findLive(const std::string& key, TimePoint now) const;
     Entry* findLive(const std::string& key, TimePoint now);
-    void setLocked(const std::string& key, std::string value);
     void insertNew(const std::string& key, std::string value);
     bool removeEntry(const std::string& key);
+    void setLocked(const std::string& key, std::string value);
     void logRecord(const std::string& cmd, std::initializer_list<std::string_view> args);
 };

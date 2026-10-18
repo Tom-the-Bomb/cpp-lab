@@ -17,7 +17,7 @@ struct Command {
 
 using CommandTable = std::unordered_map<std::string, Command>;
 
-CommandTable makeCommands();
-
 std::optional<Reply> handleArgs(Store& store, const CommandTable& commands, const Args& args);
 std::optional<Reply> handleLine(Store& store, const CommandTable& commands, const std::string& line);
+
+CommandTable makeCommands();

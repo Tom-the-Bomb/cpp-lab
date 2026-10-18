@@ -19,13 +19,13 @@ public:
         curr->isEnd = true;
     }
 
+    void erase(const std::string& key) {
+        eraseRec(&root_, key, 0);
+    }
+
     bool contains(const std::string& key) const {
         const Node* node = findNode(key);
         return node && node->isEnd;
-    }
-
-    void erase(const std::string& key) {
-        eraseRec(&root_, key, 0);
     }
 
     // every key starting with `prefix`, in alphabetical order
