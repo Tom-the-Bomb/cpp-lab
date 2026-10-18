@@ -13,6 +13,7 @@ struct Command {
     std::size_t minArgs;
     std::size_t maxArgs;
     const char* usage;
+    bool isWrite;
 };
 
 using CommandTable = std::unordered_map<std::string, Command>;

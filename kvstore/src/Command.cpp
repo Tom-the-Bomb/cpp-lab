@@ -39,6 +39,10 @@ std::optional<Reply> handleArgs(Store& store, const CommandTable& commands, cons
     if (args.size() < cmd.minArgs || args.size() > cmd.maxArgs) {
         return Reply::error(std::string("ERR usage: ") + cmd.usage);
     }
+    std::string failure = store.failureReason();
+    if (cmd.isWrite && !failure.empty()) {
+        return Reply::error("MISCONF Errors writing to the AOF file: " + failure);
+    }
     return cmd.run(store, args);
 }
 
@@ -244,28 +248,28 @@ static Reply rewriteAof(Store& store, const Args&) {
 
 CommandTable makeCommands() {
     return {
-        {"PING", {ping, 1, 2, "PING [message]"}},
-        {"ECHO", {echo, 2, 2, "ECHO <message>"}},
-        {"GET", {get, 2, 2, "GET <key>"}},
-        {"MGET", {mget, 2, variadic, "MGET <...keys>"}},
-        {"STRLEN", {strLen, 2, 2, "STRLEN <key>"}},
-        {"SET", {set, 3, 3, "SET <key> <value>"}},
-        {"MSET", {mset, 3, variadic, "MSET <key> <value> [<key> <value>...]"}},
-        {"SETNX", {setNX, 3, 3, "SETNX <key> <value>"}},
-        {"INCR", {incr, 2, 2, "INCR <key>"}},
-        {"INCRBY", {incrBy, 3, 3, "INCRBY <key> <delta>"}},
-        {"DECR", {decr, 2, 2, "DECR <key>"}},
-        {"DECRBY", {decrBy, 3, 3, "DECRBY <key> <delta>"}},
-        {"APPEND", {append, 3, 3, "APPEND <key> <value>"}},
-        {"DEL", {del, 2, variadic, "DEL <...keys>"}},
-        {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>"}},
-        {"DBSIZE", {dbSize, 1, 1, "DBSIZE"}},
-        {"KEYS", {keys, 2, 2, "KEYS <prefix>"}},
-        {"FLUSHALL", {flushAll, 1, 1, "FLUSHALL"}},
-        {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>"}},
-        {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>"}},
-        {"TTL", {ttl, 2, 2, "TTL <key>"}},
-        {"PERSIST", {persist, 2, 2, "PERSIST <key>"}},
-        {"REWRITEAOF", {rewriteAof, 1, 1, "REWRITEAOF"}},
+        {"PING", {ping, 1, 2, "PING [message]", false}},
+        {"ECHO", {echo, 2, 2, "ECHO <message>", false}},
+        {"GET", {get, 2, 2, "GET <key>", false}},
+        {"MGET", {mget, 2, variadic, "MGET <...keys>", false}},
+        {"STRLEN", {strLen, 2, 2, "STRLEN <key>", false}},
+        {"SET", {set, 3, 3, "SET <key> <value>", true}},
+        {"MSET", {mset, 3, variadic, "MSET <key> <value> [<key> <value>...]", true}},
+        {"SETNX", {setNX, 3, 3, "SETNX <key> <value>", true}},
+        {"INCR", {incr, 2, 2, "INCR <key>", true}},
+        {"INCRBY", {incrBy, 3, 3, "INCRBY <key> <delta>", true}},
+        {"DECR", {decr, 2, 2, "DECR <key>", true}},
+        {"DECRBY", {decrBy, 3, 3, "DECRBY <key> <delta>", true}},
+        {"APPEND", {append, 3, 3, "APPEND <key> <value>", true}},
+        {"DEL", {del, 2, variadic, "DEL <...keys>", true}},
+        {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>", false}},
+        {"DBSIZE", {dbSize, 1, 1, "DBSIZE", false}},
+        {"KEYS", {keys, 2, 2, "KEYS <prefix>", false}},
+        {"FLUSHALL", {flushAll, 1, 1, "FLUSHALL", true}},
+        {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>", true}},
+        {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>", true}},
+        {"TTL", {ttl, 2, 2, "TTL <key>", false}},
+        {"PERSIST", {persist, 2, 2, "PERSIST <key>", true}},
+        {"REWRITEAOF", {rewriteAof, 1, 1, "REWRITEAOF", false}},
     };
 }

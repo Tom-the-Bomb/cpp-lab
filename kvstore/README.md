@@ -18,6 +18,7 @@ A Redis-style in-memory key-value store
   - the same input parsing specifications (`Tokenize.cpp`) and output formats
   - RESP support
 - proper resource safety, size limits, validation, and error handling (i.e. corrupted writes get trimmed)
+  - tradeoffs in AOF like availability for consistency (hard refusals + recovery when AOF writing fails)
 
 ## Usage
 

@@ -31,8 +31,9 @@
 
 constexpr std::uintmax_t minResizeAofSize = 65536; // 64kB
 constexpr int maxWorkPerSweep = 1000;
-// backoff on failure to avoid retry spam
-constexpr std::chrono::duration rewriteRetryAfter = std::chrono::seconds(60);
+
+constexpr std::chrono::seconds compactRetryAfter(60); // auto compaction failed
+constexpr std::chrono::seconds recoverRetryAfter(1);  // AOF broken, writes refused
 
 static long long ttlToTime(Store::Clock::duration s) {
     return std::chrono::round<std::chrono::seconds>(std::chrono::system_clock::now() + s).time_since_epoch().count();
@@ -261,11 +262,11 @@ bool Store::rewriteAof(bool force) {
     std::error_code ec;
     TimePoint now = Clock::now();
     if (!force) {
-        if (now < autoRewriteRetryAt_ || !aof_.isOpen() || !aofGrowth_) {
+        if (now < autoRewriteRetryAt_ || (failureReason_.empty() && (!aof_.isOpen() || !aofGrowth_))) {
             return false;
         }
         std::uintmax_t size = std::filesystem::file_size(aofPath_, ec);
-        if (ec || size < minResizeAofSize || size < aofGrowth_ * prevAofSize_) {
+        if (failureReason_.empty() && (ec || size < minResizeAofSize || size < aofGrowth_ * prevAofSize_)) {
             return false;
         }
     }
@@ -279,7 +280,7 @@ bool Store::rewriteAof(bool force) {
         std::error_code ignored;
         std::filesystem::remove(tmpPath, ignored);
         if (!force) {
-            autoRewriteRetryAt_ = now + rewriteRetryAfter;
+            autoRewriteRetryAt_ = now + (failureReason_.empty() ? compactRetryAfter : recoverRetryAfter);
         }
         return false;
     };
@@ -313,14 +314,21 @@ bool Store::rewriteAof(bool force) {
     std::filesystem::rename(tmpPath, aofPath_, ec);
     aof_ = Fd(open(aofPath_.c_str(), O_WRONLY | O_APPEND, 0644));
     if (!aof_.isOpen()) {
-        perror("aof reopen");
+        failureReason_ = std::strerror(errno);
+        return fail("reopen", std::strerror(errno));
     }
     if (ec) {
         return fail("rename", ec.message());
     }
     prevAofSize_ = newSize;
+    failureReason_ = "";
     autoRewriteRetryAt_ = {};
     return aof_.isOpen();
+}
+
+std::string Store::failureReason() const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return failureReason_;
 }
 
 // returns `true` if sweep finished only due to `maxWorkPerSweep`
@@ -333,6 +341,7 @@ bool Store::sweepExpired() {
 
     if (now - lastSync_ >= std::chrono::seconds(1)) {
         if (!syncFd(aof_.fd())) {
+            failureReason_ = std::strerror(errno);
             perror("aof fsync");
         }
         lastSync_ = now;
@@ -425,6 +434,7 @@ void Store::logRecord(const std::string& cmd, std::initializer_list<std::string_
     bool haveSize = fstat(aof_.fd(), &st) == 0;
 
     if (!sendAll(aof_.fd(), formatRecord(cmd, args) + "\n")) {
+        failureReason_ = std::strerror(errno);
         perror("aof");
         // truncate a half-written line to the old size before write if write fails
         if (haveSize && ftruncate(aof_.fd(), st.st_size) < 0) {

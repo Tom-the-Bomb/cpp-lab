@@ -64,6 +64,7 @@ public:
     void beginLoading();
     bool openAof();
     bool rewriteAof(bool force);
+    std::string failureReason() const;
 private:
     struct Entry {
         std::string value;
@@ -91,7 +92,8 @@ private:
     std::atomic<bool> running_ = true;
     // the store is currently being rebuilt from the AOF
     // used to temporarily pause expiration checks
-    bool loading_ = false; // guarded by `mu_`
+    bool loading_ = false;      // guarded by `mu_`
+    std::string failureReason_; // guarded by `mu_`
     Fd aof_;
     TimePoint lastSync_; // sweeper thread
     const std::string aofPath_;
