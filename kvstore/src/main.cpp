@@ -65,8 +65,22 @@ int main(int argc, char* argv[]) {
             }
             std::cerr << "ERR usage: --aof-resize <factor>" << std::endl;
             return 1;
+        } else if (arg == "--help" || arg == "-h") {
+            std::cout << R"(kvstore [-h | --help] [--server] [--maxkeys <count>] [--aof <path>] [--aof-resize <factor>]
+
+  (no flags)              REPL on stdin
+  -h, --help              this message
+  --server                TCP server on 127.0.0.1:6380
+                          RESP clients (redis-cli -p 6380) receive RESP replies,
+                          inline clients (nc 127.0.0.1 6380) receive plain text
+  --maxkeys <count>       evict least recently used key when over <count> keys (0 = off)
+  --aof <path>            persistent storage across sessions by logging writes to <path> and replaying them on startup
+  --aof-resize <factor>   rewrite the AOF once it is at least 64kB and <factor> times its last size (0 = off))"
+                      << std::endl;
+            return 0;
         } else {
-            std::cerr << "ERR usage: [--server] [--maxkeys <count>] [--aof <path>] [--aof-resize <factor>]"
+            std::cerr << "ERR usage: kvstore [-h | --help] [--server] [--maxkeys <count>] [--aof <path>] "
+                         "[--aof-resize <factor>]"
                       << std::endl;
             return 1;
         }
