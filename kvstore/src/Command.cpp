@@ -27,6 +27,18 @@ static Reply keyTooLongError() {
     return Reply::error("ERR key too long (max " + std::to_string(maxKeySize) + " bytes)");
 }
 
+static std::optional<Reply> checkPairs(const Args& args, const std::string& usage) {
+    if (args.size() % 2 == 0) {
+        return Reply::error("ERR usage: " + usage);
+    }
+    for (std::size_t i = 1; i < args.size(); i += 2) {
+        if (keyTooLong(args[i])) {
+            return keyTooLongError();
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<Reply> handleArgs(Store& store, const CommandTable& commands, const Args& args) {
     if (args.empty()) {
         return std::nullopt;
@@ -39,9 +51,11 @@ std::optional<Reply> handleArgs(Store& store, const CommandTable& commands, cons
     if (args.size() < cmd.minArgs || args.size() > cmd.maxArgs) {
         return Reply::error(std::string("ERR usage: ") + cmd.usage);
     }
-    std::string failure = store.failureReason();
-    if (cmd.isWrite && !failure.empty()) {
-        return Reply::error("MISCONF Errors writing to the AOF file: " + failure);
+    if (cmd.isWrite) {
+        std::string failure = store.failureReason();
+        if (!failure.empty()) {
+            return Reply::error("MISCONF Errors writing to the AOF file: " + failure);
+        }
     }
     return cmd.run(store, args);
 }
@@ -90,6 +104,14 @@ static Reply mget(Store& store, const Args& args) {
     return Reply::array(std::move(out));
 }
 
+static Reply getDel(Store& store, const Args& args) {
+    auto v = store.getDel(args[1]);
+    if (!v) {
+        return Reply::nil();
+    }
+    return Reply::bulk(std::move(*v));
+}
+
 static Reply strLen(Store& store, const Args& args) {
     return Reply::integer(get(store, args).str.size());
 }
@@ -103,13 +125,8 @@ static Reply set(Store& store, const Args& args) {
 }
 
 static Reply mset(Store& store, const Args& args) {
-    if (args.size() % 2 == 0) {
-        return Reply::error("ERR usage: MSET <key> <value> [<key> <value>...]");
-    }
-    for (std::size_t i = 1; i < args.size(); i += 2) {
-        if (keyTooLong(args[i])) {
-            return keyTooLongError();
-        }
+    if (auto err = checkPairs(args, "MSET <key> <value> [<key> <value>...]")) {
+        return *err;
     }
     store.mset(std::span(args).subspan(1));
     return Reply::ok();
@@ -120,6 +137,13 @@ static Reply setNX(Store& store, const Args& args) {
         return keyTooLongError();
     }
     return Reply::integer(store.setIfAbsent(args[1], args[2]));
+}
+
+static Reply msetNX(Store& store, const Args& args) {
+    if (auto err = checkPairs(args, "MSETNX <key> <value> [<key> <value>...]")) {
+        return *err;
+    }
+    return Reply::integer(store.msetIfAbsent(std::span(args).subspan(1)));
 }
 
 static Reply incrReply(Store& store, const std::string& key, long long delta) {
@@ -183,6 +207,14 @@ static Reply exists(Store& store, const Args& args) {
     return Reply::integer(cnt);
 }
 
+static Reply touch(Store& store, const Args& args) {
+    int cnt = 0;
+    for (std::size_t i = 1; i < args.size(); i++) {
+        cnt += store.touch(args[i]);
+    }
+    return Reply::integer(cnt);
+}
+
 static Reply dbSize(Store& store, const Args&) {
     return Reply::integer(store.size());
 }
@@ -238,6 +270,10 @@ static Reply ttl(Store& store, const Args& args) {
     return Reply::integer(store.ttl(args[1]));
 }
 
+static Reply expireTime(Store& store, const Args& args) {
+    return Reply::integer(store.expireTime(args[1]));
+}
+
 static Reply persist(Store& store, const Args& args) {
     return Reply::integer(store.persist(args[1]));
 }
@@ -252,10 +288,12 @@ CommandTable makeCommands() {
         {"ECHO", {echo, 2, 2, "ECHO <message>", false}},
         {"GET", {get, 2, 2, "GET <key>", false}},
         {"MGET", {mget, 2, variadic, "MGET <...keys>", false}},
+        {"GETDEL", {getDel, 2, 2, "GETDEL <key>", true}},
         {"STRLEN", {strLen, 2, 2, "STRLEN <key>", false}},
         {"SET", {set, 3, 3, "SET <key> <value>", true}},
         {"MSET", {mset, 3, variadic, "MSET <key> <value> [<key> <value>...]", true}},
         {"SETNX", {setNX, 3, 3, "SETNX <key> <value>", true}},
+        {"MSETNX", {msetNX, 3, variadic, "MSETNX <key> <value> [<key> <value>...]", true}},
         {"INCR", {incr, 2, 2, "INCR <key>", true}},
         {"INCRBY", {incrBy, 3, 3, "INCRBY <key> <delta>", true}},
         {"DECR", {decr, 2, 2, "DECR <key>", true}},
@@ -263,12 +301,14 @@ CommandTable makeCommands() {
         {"APPEND", {append, 3, 3, "APPEND <key> <value>", true}},
         {"DEL", {del, 2, variadic, "DEL <...keys>", true}},
         {"EXISTS", {exists, 2, variadic, "EXISTS <...keys>", false}},
+        {"TOUCH", {touch, 2, variadic, "TOUCH <...keys>", false}},
         {"DBSIZE", {dbSize, 1, 1, "DBSIZE", false}},
         {"KEYS", {keys, 2, 2, "KEYS <prefix>", false}},
         {"FLUSHALL", {flushAll, 1, 1, "FLUSHALL", true}},
         {"EXPIRE", {expire, 3, 3, "EXPIRE <key> <seconds>", true}},
         {"EXPIREAT", {expireAt, 3, 3, "EXPIREAT <key> <unix seconds>", true}},
         {"TTL", {ttl, 2, 2, "TTL <key>", false}},
+        {"EXPIRETIME", {expireTime, 2, 2, "EXPIRETIME <key>", false}},
         {"PERSIST", {persist, 2, 2, "PERSIST <key>", true}},
         {"REWRITEAOF", {rewriteAof, 1, 1, "REWRITEAOF", false}},
     };

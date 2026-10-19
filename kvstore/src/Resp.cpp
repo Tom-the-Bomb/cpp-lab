@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
 
 #include "Tokenize.h"
 
@@ -49,5 +50,5 @@ ParseResult parseResp(const std::string& buf) {
         args.push_back(buf.substr(i, *len));
         i += *len + 2;
     }
-    return ParseResult {ParseStatus::Complete, args, i};
+    return ParseResult {ParseStatus::Complete, std::move(args), i};
 }

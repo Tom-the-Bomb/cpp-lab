@@ -28,7 +28,7 @@ Build first (see [root README](../README.md))
 kvstore [-h | --help] [--server] [--maxkeys <count>]
         [--aof <path>] [--aof-resize <factor>]
 
-  (no flags)              REPL on stdin
+  (no flags)              REPL on stdin (EXIT to quit)
   -h, --help              this message
   --server                TCP server on 127.0.0.1:6380
                           RESP clients (redis-cli -p 6380) receive RESP,
@@ -48,10 +48,12 @@ PING [message]                  PONG, or <message>
 ECHO <message>                  <message>
 GET <key>                       value, or (nil)
 MGET <key>...                   value or (nil) for each key
+GETDEL <key>                    value or (nil), then deletes the key
 STRLEN <key>                    length of value, 0 if no key
 SET <key> <value>               OK, clears TTL
 MSET <key> <value> ...          OK, sets all pairs at once
 SETNX <key> <value>             1 if set, 0 if key exists
+MSETNX <key> <value> ...        1 if all set, 0 if any key exists
 INCR <key>                      increments by 1
 INCRBY <key> <delta>            increments by <delta>
 DECR <key>                      decrements by 1
@@ -59,6 +61,7 @@ DECRBY <key> <delta>            decrements by <delta>
 APPEND <key> <value>            new length, keeps TTL
 DEL <key>...                    number of keys removed
 EXISTS <key>...                 number of keys that exist
+TOUCH <key>...                  number of keys that exist, marks them used
 DBSIZE                          number of keys
 KEYS <prefix>*                  keys starting with <prefix>, sorted
 KEYS <key>                      <key> if it exists
@@ -66,6 +69,7 @@ FLUSHALL                        OK, deletes every key
 EXPIRE <key> <seconds>          1 if TTL set, 0 if no key (<= 0 expires now)
 EXPIREAT <key> <unix-seconds>   1 if TTL set, 0 if no key (past expires now)
 TTL <key>                       seconds left, -1 no TTL, -2 no key
+EXPIRETIME <key>                unix-seconds expiry, -1 no TTL, -2 no key
 PERSIST <key>                   1 if TTL removed, 0 otherwise
 REWRITEAOF                      compact the AOF, 1 on success
 ```

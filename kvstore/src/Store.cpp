@@ -100,6 +100,17 @@ std::vector<std::optional<std::string>> Store::mget(std::span<const std::string>
     return out;
 }
 
+std::optional<std::string> Store::getDel(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mu_);
+    Entry* v = findLive(key, Clock::now());
+    if (!v) {
+        return std::nullopt;
+    }
+    std::string value = std::move(v->value);
+    removeEntry(key);
+    return value;
+}
+
 void Store::set(const std::string& key, std::string value) {
     std::lock_guard<std::mutex> lock(mu_);
     setLocked(key, std::move(value));
@@ -119,6 +130,20 @@ bool Store::setIfAbsent(const std::string& key, std::string value) {
     }
     removeEntry(key);
     insertNew(key, std::move(value));
+    return true;
+}
+
+bool Store::msetIfAbsent(std::span<const std::string> pairs) {
+    std::lock_guard<std::mutex> lock(mu_);
+    TimePoint now = Clock::now();
+    for (std::size_t i = 0; i + 1 < pairs.size(); i += 2) {
+        if (findLive(pairs[i], now)) {
+            return false;
+        }
+    }
+    for (std::size_t i = 0; i + 1 < pairs.size(); i += 2) {
+        setLocked(pairs[i], pairs[i + 1]);
+    }
     return true;
 }
 
@@ -173,6 +198,16 @@ bool Store::exists(const std::string& key) const {
     return findLive(key, Clock::now()) != nullptr;
 }
 
+bool Store::touch(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mu_);
+    Entry* v = findLive(key, Clock::now());
+    if (!v) {
+        return false;
+    }
+    lru_.moveToFront(v->node.get());
+    return true;
+}
+
 std::size_t Store::size() const {
     std::lock_guard<std::mutex> lock(mu_);
     return data_.size();
@@ -223,6 +258,19 @@ long long Store::ttl(const std::string& key) const {
         return -1;
     }
     return std::chrono::round<std::chrono::seconds>(*v->expiresAt - now).count();
+}
+
+long long Store::expireTime(const std::string& key) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    TimePoint now = Clock::now();
+    const Entry* v = findLive(key, now);
+    if (!v) {
+        return -2;
+    }
+    if (!v->expiresAt) {
+        return -1;
+    }
+    return ttlToTime(*v->expiresAt - now);
 }
 
 bool Store::persist(const std::string& key) {
@@ -415,6 +463,7 @@ bool Store::removeEntry(const std::string& key) {
     return exists;
 }
 
+// assume `mu_` is held, used for multiple calls together that need atomicity
 void Store::setLocked(const std::string& key, std::string value) {
     if (Entry* v = data_.find(key)) {
         v->value = std::move(value);

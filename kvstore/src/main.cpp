@@ -135,7 +135,7 @@ int main(int argc, char* argv[]) {
 
     while (true) {
         std::cout << "> " << std::flush;
-        if (!std::getline(std::cin, line)) {
+        if (!std::getline(std::cin, line) || toUpper(line) == "EXIT") {
             return 0;
         }
         auto out = handleLine(store, t, line);
