@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-template <typename K> class Bst {
+template <typename K, bool Balanced = true> class Bst {
 public:
     // `false` if val already exists (nothing was inserted)
     bool insert(K val) {
@@ -51,7 +51,7 @@ public:
     }
 
     std::size_t height() const {
-        return heightHelper(root_.get());
+        return nodeHeight(root_.get());
     }
 private:
     struct Node;
@@ -61,6 +61,7 @@ private:
         K val;
         NodePtr left;
         NodePtr right;
+        std::size_t height = 1;
     };
 
     mutable std::size_t visited_ = 0;
@@ -78,6 +79,7 @@ private:
         } else if (curr->val < val) {
             curr->right = insertHelper(std::move(val), std::move(curr->right));
         }
+        curr = rebalance(std::move(curr));
         return curr;
     }
 
@@ -118,6 +120,7 @@ private:
                 curr->right = eraseHelper(curr->val, std::move(curr->right));
             }
         }
+        curr = rebalance(std::move(curr));
         return curr;
     }
 
@@ -138,11 +141,90 @@ private:
         }
     }
 
-    std::size_t heightHelper(const Node* curr) const {
-        if (!curr) {
-            return 0;
+    std::size_t nodeHeight(const Node* node) const {
+        if (node) {
+            return node->height;
         }
-        return 1 + std::max(heightHelper(curr->left.get()), heightHelper(curr->right.get()));
+        return 0;
+    }
+
+    void recomputeHeight(Node* node) {
+        node->height = 1 + std::max(nodeHeight(node->left.get()), nodeHeight(node->right.get()));
+    }
+
+    int balanceFactor(const Node* node) const {
+        return static_cast<int>(nodeHeight(node->left.get())) - static_cast<int>(nodeHeight(node->right.get()));
+    }
+
+    NodePtr rebalance(NodePtr node) {
+        recomputeHeight(node.get());
+        if constexpr (!Balanced) {
+            return node;
+        }
+        int bf = balanceFactor(node.get());
+
+        // TOO left heavy
+        if (bf > 1) {
+            int bfL = balanceFactor(node->left.get());
+            // node.right is right heavy
+            if (bfL < 0) {
+                node = rotateLeftRight(std::move(node));
+            } else {
+                node = rotateRight(std::move(node));
+            }
+        }
+        // TOO right heavy
+        if (bf < -1) {
+            int bfR = balanceFactor(node->right.get());
+            if (bfR > 0) {
+                node = rotateRightLeft(std::move(node));
+            } else {
+                node = rotateLeft(std::move(node));
+            }
+        }
+        return node;
+    }
+
+    NodePtr rotateLeft(NodePtr node) {
+        // `y` is the pivot AKA the new root after rotation
+        NodePtr y = std::move(node->right);
+
+        // first move the subtree that is in the spot we are trying to rotate to, out
+        // it ends up going into `node`'s right as it is guaranteed to be bigger than `node`
+        // since it is currently under `y` but `y` is on `node`'s right
+        node->right = std::move(y->left);
+        // subtree moved out, spot is free, rotate `y` into the new spot
+        y->left = std::move(node);
+
+        // `node` is no longer the root, is a child of `y`
+        recomputeHeight(y->left.get());
+        // `y` is now the new root
+        recomputeHeight(y.get());
+        return y;
+    }
+
+    NodePtr rotateRight(NodePtr node) {
+        NodePtr y = std::move(node->left);
+
+        node->left = std::move(y->right);
+        y->right = std::move(node);
+
+        recomputeHeight(y->right.get());
+        recomputeHeight(y.get());
+        return y;
+    }
+
+    NodePtr rotateLeftRight(NodePtr node) {
+        //  3 (node)           3
+        // 1  (node.left) -> 2 -> 2
+        //  2               1    1 3
+        node->left = rotateLeft(std::move(node->left));
+        return rotateRight(std::move(node));
+    }
+
+    NodePtr rotateRightLeft(NodePtr node) {
+        node->right = rotateRight(std::move(node->right));
+        return rotateLeft(std::move(node));
     }
 };
 
