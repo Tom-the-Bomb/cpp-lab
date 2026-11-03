@@ -29,7 +29,7 @@
 #include "LruList.h"
 #include "Tokenize.h"
 
-constexpr std::uintmax_t minResizeAofSize = 65536; // 64kB
+constexpr std::uintmax_t minResizeAofSize = 65536; // 64 KiB
 constexpr int maxWorkPerSweep = 1000;
 
 constexpr std::chrono::seconds compactRetryAfter(60); // auto compaction failed

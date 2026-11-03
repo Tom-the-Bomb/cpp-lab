@@ -75,7 +75,7 @@ static void handleClient(int fd, Store& store, const CommandTable& table) {
                 }
             }
         }
-        if (buf.size() >= 65536) { // 64 kB max size, ie. long line without \n
+        if (buf.size() >= 65536) { // 64 KiB max size, ie. long line without \n
             sendAll(fd, toText(Reply::error("ERR Protocol error: too big inline request")) + "\n");
             return;
         }
